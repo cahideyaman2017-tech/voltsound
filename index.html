@@ -1,98 +1,87 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html>
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VoltSound</title>
 
 <style>
 body{
-    margin:0;
-    background:#000;
-    color:#fff;
+    background:black;
+    color:white;
     font-family:Arial,sans-serif;
     display:flex;
+    flex-direction:column;
     justify-content:center;
     align-items:center;
     height:100vh;
+    margin:0;
 }
 
-.container{
-    text-align:center;
-}
-
-h1{
-    letter-spacing:4px;
-}
-
-.speed{
-    font-size:140px;
-    font-weight:bold;
-    line-height:1;
-}
-
-.unit{
-    font-size:24px;
-    opacity:.8;
+#speed{
+    font-size:120px;
+    font-weight:300;
 }
 
 button{
     margin-top:30px;
-    padding:20px 40px;
-    font-size:20px;
+    padding:20px 50px;
+    font-size:24px;
     border:none;
     border-radius:12px;
-    cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<div id="speed">0</div>
+<div>km/h</div>
 
-<h1>VOLTSOUND</h1>
+<button onclick="start()">START</button>
 
-<div class="speed" id="speed">0</div>
-
-<div class="unit">km/h</div>
-
-<button onclick="startDemo()">START</button>
-
-</div>
+<audio id="engine" loop>
+    <source src="iconic.wav" type="audio/wav">
+</audio>
 
 <script>
 
-const sound = new Audio("iconic.wav");
-sound.loop = true;
-sound.preload = "auto";
+function start(){
 
-let speed = 0;
-let started = false;
+    const audio = document.getElementById("engine");
 
-function startDemo(){
+    audio.play();
 
-    if(started) return;
-    started = true;
+    navigator.geolocation.watchPosition(
 
-    sound.play().catch(err => {
-        console.log(err);
-    });
+        function(pos){
 
-    setInterval(() => {
+            let speed = pos.coords.speed;
 
-        speed += 1;
+            if(speed == null) speed = 0;
 
-        if(speed > 140){
-            speed = 0;
+            let kmh = Math.round(speed * 3.6);
+
+            document.getElementById("speed").innerText = kmh;
+
+            let rate = 0.8 + (kmh / 100);
+
+            if(rate > 2.2) rate = 2.2;
+
+            audio.playbackRate = rate;
+
+        },
+
+        function(err){
+            console.log(err);
+        },
+
+        {
+            enableHighAccuracy:true,
+            maximumAge:0
         }
 
-        document.getElementById("speed").textContent = speed;
-
-        sound.playbackRate = 1 + (speed / 200);
-
-    }, 50);
+    );
 
 }
 
