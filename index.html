@@ -22,7 +22,6 @@ body{
 #speed{
     font-size:120px;
     font-weight:200;
-    line-height:1;
 }
 
 #unit{
@@ -32,11 +31,10 @@ body{
 
 button{
     margin-top:40px;
-    padding:18px 50px;
+    padding:20px 50px;
+    font-size:24px;
     border:none;
     border-radius:14px;
-    font-size:22px;
-    cursor:pointer;
 }
 </style>
 </head>
@@ -47,90 +45,92 @@ button{
 
 <button id="startBtn">START</button>
 
-<audio id="idle" loop src="idle.wav"></audio>
-<audio id="cruise" loop src="cruise.wav"></audio>
-<audio id="sport" loop src="sport.wav"></audio>
-<audio id="boost" loop src="boost.wav"></audio>
-
 <script>
 
-const idle = document.getElementById("idle");
-const cruise = document.getElementById("cruise");
-const sport = document.getElementById("sport");
-const boost = document.getElementById("boost");
+let idleAudio;
+let cruiseAudio;
+let sportAudio;
+let boostAudio;
 
-const audios = [idle, cruise, sport, boost];
-
-function setVolumes(speed){
-
-    let vIdle = 0;
-    let vCruise = 0;
-    let vSport = 0;
-    let vBoost = 0;
-
-    if(speed < 20){
-        vIdle = 1;
-    }
-
-    else if(speed < 40){
-        let t = (speed - 20) / 20;
-        vIdle = 1 - t;
-        vCruise = t;
-    }
-
-    else if(speed < 80){
-        vCruise = 1;
-    }
-
-    else if(speed < 120){
-        let t = (speed - 80) / 40;
-        vCruise = 1 - t;
-        vSport = t;
-    }
-
-    else if(speed < 150){
-        vSport = 1;
-    }
-
-    else{
-        let t = Math.min((speed - 150) / 30, 1);
-        vSport = 1 - t;
-        vBoost = t;
-    }
-
-    idle.volume = vIdle * 0.8;
-    cruise.volume = vCruise * 0.8;
-    sport.volume = vSport * 0.9;
-    boost.volume = vBoost;
-
-    idle.playbackRate = 0.9 + speed/250;
-    cruise.playbackRate = 0.95 + speed/300;
-    sport.playbackRate = 1 + speed/350;
-    boost.playbackRate = 1 + speed/400;
+function fade(audio,target){
+    audio.volume += (target - audio.volume) * 0.08;
 }
 
-document.getElementById("startBtn").addEventListener("click", async () => {
+document.getElementById("startBtn").onclick = async () => {
 
-    for(const audio of audios){
-        audio.volume = 0;
-        await audio.play();
+    idleAudio = new Audio("idle.wav");
+    cruiseAudio = new Audio("cruise.wav");
+    sportAudio = new Audio("sport.wav");
+    boostAudio = new Audio("boost.wav");
+
+    const sounds = [
+        idleAudio,
+        cruiseAudio,
+        sportAudio,
+        boostAudio
+    ];
+
+    sounds.forEach(a=>{
+        a.loop = true;
+        a.volume = 0;
+    });
+
+    try{
+
+        await idleAudio.play();
+        await cruiseAudio.play();
+        await sportAudio.play();
+        await boostAudio.play();
+
+        idleAudio.volume = 1;
+
+    }catch(e){
+        console.log(e);
     }
 
     navigator.geolocation.watchPosition(
 
-        (pos) => {
+        pos => {
 
             let speed = pos.coords.speed || 0;
-
             let kmh = Math.round(speed * 3.6);
 
-            document.getElementById("speed").textContent = kmh;
+            document.getElementById("speed").innerText = kmh;
 
-            setVolumes(kmh);
+            let idleTarget = 0;
+            let cruiseTarget = 0;
+            let sportTarget = 0;
+            let boostTarget = 0;
+
+            if(kmh < 20){
+                idleTarget = 1;
+            }
+            else if(kmh < 60){
+                cruiseTarget = 1;
+            }
+            else if(kmh < 120){
+                sportTarget = 1;
+            }
+            else{
+                boostTarget = 1;
+            }
+
+            fade(idleAudio,idleTarget);
+            fade(cruiseAudio,cruiseTarget);
+            fade(sportAudio,sportTarget);
+            fade(boostAudio,boostTarget);
+
         },
 
-        (err) => {
+        err => {
             console.log(err);
+
+            document.getElementById("speed").innerText = "0";
+
+            fade(idleAudio,1);
+            fade(cruiseAudio,0);
+            fade(sportAudio,0);
+            fade(boostAudio,0);
         },
 
         {
@@ -140,7 +140,7 @@ document.getElementById("startBtn").addEventListener("click", async () => {
 
     );
 
-});
+};
 
 </script>
 
