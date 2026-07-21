@@ -1,38 +1,36 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <title>VoltSound</title>
 
 <style>
 body{
-    margin:0;
     background:#000;
-    color:white;
-    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    color:#fff;
+    margin:0;
+    height:100vh;
     display:flex;
     flex-direction:column;
     justify-content:center;
     align-items:center;
-    height:100vh;
+    font-family:-apple-system,sans-serif;
 }
-
 #speed{
     font-size:120px;
     font-weight:200;
 }
-
 #status{
-    margin-top:10px;
-    opacity:.7;
-    font-size:18px;
+    margin-top:15px;
+    font-size:16px;
+    opacity:.8;
+    text-align:center;
+    max-width:90%;
 }
-
 button{
-    margin-top:40px;
-    padding:18px 40px;
+    margin-top:30px;
+    padding:16px 40px;
     font-size:22px;
     border:none;
     border-radius:12px;
@@ -43,48 +41,41 @@ button{
 
 <div id="speed">0</div>
 <div id="status">Hazır</div>
-
-<button id="startBtn">START</button>
+<button id="start">START</button>
 
 <script>
 
 let currentAudio = null;
-let currentName = "";
+let currentMode = "";
 
 let lastLat = null;
 let lastLon = null;
 let lastTime = null;
 
-const sounds = {
-    idle: new Audio("idle.wav"),
-    cruise: new Audio("cruise.wav"),
-    sport: new Audio("sport.wav"),
-    boost: new Audio("boost.wav")
+const audioFiles = {
+    idle: "idle.wav",
+    cruise: "cruise.wav",
+    sport: "sport.wav",
+    boost: "boost.wav"
 };
 
-for(const s of Object.values(sounds)){
-    s.loop = true;
-}
+function playMode(mode){
 
-function playSound(name){
-
-    if(currentName === name) return;
+    if(currentMode === mode) return;
 
     if(currentAudio){
         currentAudio.pause();
         currentAudio.currentTime = 0;
     }
 
-    currentAudio = sounds[name];
-    currentName = name;
-
+    currentAudio = new Audio(audioFiles[mode]);
+    currentAudio.loop = true;
     currentAudio.play();
 
-    document.getElementById("status").innerText =
-        "Mode: " + name;
+    currentMode = mode;
 }
 
-function distanceMeters(lat1, lon1, lat2, lon2){
+function distance(lat1, lon1, lat2, lon2){
 
     const R = 6371000;
 
@@ -98,14 +89,12 @@ function distanceMeters(lat1, lon1, lat2, lon2){
         Math.sin(dLon/2) *
         Math.sin(dLon/2);
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R*c;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-document.getElementById("startBtn").onclick = () => {
+document.getElementById("start").onclick = () => {
 
-    playSound("idle");
+    playMode("idle");
 
     navigator.geolocation.watchPosition(
 
@@ -120,20 +109,13 @@ document.getElementById("startBtn").onclick = () => {
             if(lastLat !== null){
 
                 const meters =
-                    distanceMeters(
-                        lastLat,
-                        lastLon,
-                        lat,
-                        lon
-                    );
+                    distance(lastLat,lastLon,lat,lon);
 
                 const seconds =
-                    (now - lastTime) / 1000;
+                    (now-lastTime)/1000;
 
                 if(seconds > 0){
-
-                    kmh =
-                        (meters / seconds) * 3.6;
+                    kmh = (meters/seconds)*3.6;
                 }
             }
 
@@ -143,34 +125,33 @@ document.getElementById("startBtn").onclick = () => {
 
             kmh = Math.round(kmh);
 
-            document.getElementById("speed").innerText =
-                kmh;
+            document.getElementById("speed").innerText = kmh;
 
-            if(kmh < 20){
-                playSound("idle");
-            }
-            else if(kmh < 60){
-                playSound("cruise");
-            }
-            else if(kmh < 120){
-                playSound("sport");
-            }
-            else{
-                playSound("boost");
-            }
+            let mode = "idle";
+
+            if(kmh >= 20) mode = "cruise";
+            if(kmh >= 60) mode = "sport";
+            if(kmh >= 120) mode = "boost";
+
+            playMode(mode);
+
+            document.getElementById("status").innerHTML =
+                "Mode: " + mode +
+                "<br>Lat: " + lat.toFixed(5) +
+                "<br>Lon: " + lon.toFixed(5);
         },
 
         err => {
 
             document.getElementById("status").innerText =
-                "GPS Error";
+                "GPS Hatası: " + err.message;
         },
 
         {
             enableHighAccuracy:true,
-            maximumAge:0
+            maximumAge:0,
+            timeout:10000
         }
-
     );
 };
 
