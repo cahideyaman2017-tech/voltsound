@@ -199,6 +199,7 @@ const ctx = canvas.getContext("2d");
 let currentSpeedForVisual = 0;
 let waveAngle = 0;
 let isEngineRunning = false;
+let waveDecayFactor = 1.0; // Dalgaların sönümlenme oranı (1 = tam aktif, 0 = tamamen durmuş)
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -219,11 +220,15 @@ function animateWaves() {
 
     for (let w = 0; w < 3; w++) {
         ctx.beginPath();
-        ctx.strokeStyle = `rgba(56, 189, 248, ${isEngineRunning ? (0.25 + (w * 0.15)) : 0.08})`;
+        // Sönümlenme oranına göre dalgaların parlaklığı ve genliği kademeli azalır
+        const alpha = (isEngineRunning || waveDecayFactor > 0.01) ? ((0.25 + (w * 0.15)) * waveDecayFactor + 0.08 * (1 - waveDecayFactor)) : 0.08;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
         
         for (let x = 0; x < canvas.width; x += 10) {
             const frequency = 0.005 + (speedFactor * 0.00015);
-            const amplitude = (isEngineRunning ? 40 : 15) + (speedFactor * 1.2);
+            // Genlik sönümlenme faktörü ile çarpılarak yavaşça sakinleşir
+            const baseAmplitude = (isEngineRunning ? 40 : 15) + (speedFactor * 1.2);
+            const amplitude = baseAmplitude * waveDecayFactor;
             
             const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.6)) * amplitude 
                       * Math.cos(waveAngle * 0.4);
@@ -355,6 +360,7 @@ document.getElementById("actionBtn").onclick = async () => {
     document.getElementById("metricPanel").classList.add("zoom-in");
     
     isEngineRunning = true;
+    waveDecayFactor = 1.0; // Dalgaları tam güce aç
 
     watchId = navigator.geolocation.watchPosition(
         pos => {
@@ -401,6 +407,19 @@ document.getElementById("stopBtn").onclick = () => {
     document.getElementById("metricPanel").classList.remove("zoom-in");
     document.getElementById("startPanel").classList.remove("zoom-out");
     document.getElementById("actionBtn").innerText = "BAŞLAT";
+
+    // DALGALARI YAVAŞÇA SÖNDÜR: 0.5 saniye içinde genliği sıfıra indir
+    const decayInterval = setInterval(() => {
+        waveDecalyStep();
+    }, 20);
+
+    function waveDecalyStep() {
+        waveDecayFactor -= 0.04;
+        if (waveDecayFactor <= 0) {
+            waveDecayFactor = 0;
+            clearInterval(decayInterval);
+        }
+    }
 
     setTimeout(() => {
         if(activeSource) {
