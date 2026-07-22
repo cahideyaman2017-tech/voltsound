@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Perfect Flow Edition</title>
+<title>VoltSound - Natural Boost Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -348,13 +348,11 @@ function chooseMode(speed){
     return "boost";
 }
 
-// TÜM GEÇİŞLER (IDLE <-> CRUISE <-> SPORT <-> BOOST) İÇİN KUSURSUZ CROSSFADE
 function switchSoundMode(mode) {
     if(mode === currentMode) return;
     if(!soundBuffers[mode]) return;
 
     const now = audioCtx.currentTime;
-    // Cruise, Sport ve Boost geçişlerinin hepsinde pürüzsüz 0.5 saniyelik harmanlanma süresi
     const FADE_TIME = 0.5;
 
     let oldSource = activeSource;
@@ -390,15 +388,16 @@ function switchSoundMode(mode) {
 function updateEngine(speed) {
     if(!activeSource) return;
 
-    let rate = 0.80 + (speed / 120);
-    rate = Math.max(0.75, Math.min(2.2, rate));
+    // Oynatma hızı tavanı düşürüldü (Artık sincap gibi tizleşip hızlanmıyor, tok kalıyor)
+    let rate = 0.80 + (speed / 160);
+    rate = Math.max(0.75, Math.min(1.65, rate));
 
-    // Geçişlerdeki devir tepki süresini biraz daha esneterek sarsıntıyı tamamen yok ettik
     const smoothingTime = 0.2; 
     activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, smoothingTime);
 
-    let targetFreq = 400 + (speed * 45);
-    targetFreq = Math.max(400, Math.min(9000, targetFreq));
+    // Filtre frekansı optimize edildi (Yüksek hızlarda aşırı tizleşme engellendi)
+    let targetFreq = 400 + (speed * 30);
+    targetFreq = Math.max(400, Math.min(5500, targetFreq));
     biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, smoothingTime);
 }
 
