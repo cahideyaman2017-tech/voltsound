@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Liquid Glass Edition</title>
+<title>VoltSound - Ultimate Fluid Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -92,7 +92,8 @@ canvas {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease;
+    /* Geçiş süresi ve yumuşaklığı artırıldı */
+    transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s ease;
 }
 
 #startPanel {
@@ -101,13 +102,13 @@ canvas {
 }
 
 #startPanel.zoom-out {
-    transform: scale(0.6);
+    transform: scale(0.5);
     opacity: 0;
     pointer-events: none;
 }
 
 #metricPanel {
-    transform: scale(1.4);
+    transform: scale(1.5);
     opacity: 0;
     pointer-events: none;
 }
@@ -129,6 +130,15 @@ canvas {
     font-weight: 600;
     letter-spacing: 1.5px;
     box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease 0.2s, transform 0.6s ease 0.2s;
+}
+
+/* Panel içeri girince status yazısı da yumuşakça yukarı süzülerek gelsin */
+#metricPanel.zoom-in #status {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 button{
@@ -199,7 +209,7 @@ const ctx = canvas.getContext("2d");
 let currentSpeedForVisual = 0;
 let waveAngle = 0;
 let isEngineRunning = false;
-let waveDecayFactor = 1.0; // Dalgaların sönümlenme oranı (1 = tam aktif, 0 = tamamen durmuş)
+let waveDecayFactor = 1.0;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -220,13 +230,11 @@ function animateWaves() {
 
     for (let w = 0; w < 3; w++) {
         ctx.beginPath();
-        // Sönümlenme oranına göre dalgaların parlaklığı ve genliği kademeli azalır
         const alpha = (isEngineRunning || waveDecayFactor > 0.01) ? ((0.25 + (w * 0.15)) * waveDecayFactor + 0.08 * (1 - waveDecayFactor)) : 0.08;
         ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
         
         for (let x = 0; x < canvas.width; x += 10) {
             const frequency = 0.005 + (speedFactor * 0.00015);
-            // Genlik sönümlenme faktörü ile çarpılarak yavaşça sakinleşir
             const baseAmplitude = (isEngineRunning ? 40 : 15) + (speedFactor * 1.2);
             const amplitude = baseAmplitude * waveDecayFactor;
             
@@ -347,7 +355,13 @@ function updateEngine(speed) {
 }
 
 document.getElementById("actionBtn").onclick = async () => {
-    document.getElementById("actionBtn").innerText = "BAŞLATILIYOR...";
+    const btn = document.getElementById("actionBtn");
+    btn.innerText = "BAŞLATILIYOR...";
+    
+    // Sesler arka planda yüklenirken arayüz hemen yumuşak geçişe başlasın
+    document.getElementById("startPanel").classList.add("zoom-out");
+    document.getElementById("metricPanel").classList.add("zoom-in");
+
     await loadSounds();
     
     if(audioCtx.state === 'suspended') {
@@ -355,12 +369,9 @@ document.getElementById("actionBtn").onclick = async () => {
     }
 
     switchSoundMode("idle");
-
-    document.getElementById("startPanel").classList.add("zoom-out");
-    document.getElementById("metricPanel").classList.add("zoom-in");
     
     isEngineRunning = true;
-    waveDecayFactor = 1.0; // Dalgaları tam güce aç
+    waveDecayFactor = 1.0;
 
     watchId = navigator.geolocation.watchPosition(
         pos => {
@@ -408,18 +419,13 @@ document.getElementById("stopBtn").onclick = () => {
     document.getElementById("startPanel").classList.remove("zoom-out");
     document.getElementById("actionBtn").innerText = "BAŞLAT";
 
-    // DALGALARI YAVAŞÇA SÖNDÜR: 0.5 saniye içinde genliği sıfıra indir
     const decayInterval = setInterval(() => {
-        waveDecalyStep();
-    }, 20);
-
-    function waveDecalyStep() {
         waveDecayFactor -= 0.04;
         if (waveDecayFactor <= 0) {
             waveDecayFactor = 0;
             clearInterval(decayInterval);
         }
-    }
+    }, 20);
 
     setTimeout(() => {
         if(activeSource) {
