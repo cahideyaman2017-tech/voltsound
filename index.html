@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Neon Wave</title>
+<title>VoltSound - Ignition Edition</title>
 
 <style>
 body{
@@ -30,13 +30,27 @@ canvas {
 
 .container{
     text-align:center;
-    background:rgba(10, 10, 15, 0.65);
-    border: 1px solid rgba(56, 189, 248, 0.25);
-    padding: 40px 60px;
-    border-radius: 28px;
-    box-shadow: 0 0 60px rgba(56, 189, 248, 0.2);
-    backdrop-filter: blur(14px);
+    background:rgba(10, 10, 15, 0.75);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    padding: 50px 70px;
+    border-radius: 32px;
+    box-shadow: 0 0 50px rgba(56, 189, 248, 0.15);
+    backdrop-filter: blur(16px);
     z-index: 2;
+    transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Başlangıçta sayaç ve ünite gizli/küçük duracak */
+.metric-box {
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 1s ease, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Motor çalışınca tetiklenecek animasyon sınıfı */
+.container.active .metric-box {
+    opacity: 1;
+    transform: scale(1);
 }
 
 #speed{
@@ -45,7 +59,7 @@ canvas {
     line-height: 1;
     letter-spacing: -2px;
     color: #38bdf8;
-    text-shadow: 0 0 25px rgba(56, 189, 248, 0.6);
+    text-shadow: 0 0 30px rgba(56, 189, 248, 0.7);
 }
 
 .unit {
@@ -57,34 +71,36 @@ canvas {
 }
 
 #status{
-    margin-top: 20px;
-    padding: 6px 18px;
+    margin-top: 25px;
+    padding: 8px 20px;
     background: rgba(56, 189, 248, 0.15);
     color: #38bdf8;
     border-radius: 20px;
     display: inline-block;
     font-size: 14px;
     font-weight: 600;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
 }
 
 button{
-    margin-top: 35px;
-    padding: 18px 45px;
-    font-size: 20px;
+    padding: 20px 50px;
+    font-size: 22px;
     font-weight: 600;
     color: #000;
     background: #38bdf8;
     border: none;
-    border-radius: 14px;
+    border-radius: 16px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);
+    transition: all 0.3s ease;
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.5);
+    letter-spacing: 1px;
 }
 
 button:hover {
     background: #7dd3fc;
-    transform: translateY(-2px);
+    box-shadow: 0 0 45px rgba(56, 189, 248, 0.8);
+    transform: scale(1.05);
 }
 </style>
 </head>
@@ -92,12 +108,14 @@ button:hover {
 
 <canvas id="waveCanvas"></canvas>
 
-<div class="container">
-    <div id="speed">0</div>
-    <div class="unit">KM/H</div>
-    <div id="status">SİSTEM HAZIR</div>
-    <br>
+<div class="container" id="mainContainer">
     <button id="startBtn">MOTORU ÇALIŞTIR</button>
+    
+    <div class="metric-box" id="metricBox">
+        <div id="speed">0</div>
+        <div class="unit">KM/H</div>
+        <div id="status">SİSTEM HAZIR</div>
+    </div>
 </div>
 
 <script>
@@ -107,6 +125,7 @@ const ctx = canvas.getContext("2d");
 
 let currentSpeedForVisual = 0;
 let waveAngle = 0;
+let isEngineRunning = false;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -116,24 +135,24 @@ window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
 function animateWaves() {
-    // Siyah arka planı hafif iz bırakacak şekilde temizliyoruz
-    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const cy = canvas.height / 2;
     
-    // Hızlandıkça dalgaların hareket hızı ve genliği artar
-    waveAngle += 0.04 + (currentSpeedForVisual / 80);
-    ctx.lineWidth = 2 + (currentSpeedForVisual / 25);
+    // Motor çalışmıyorken dalgalar çok sakin süzülür, çalışınca hıza göre coşar
+    const speedFactor = isEngineRunning ? currentSpeedForVisual : 0;
+    
+    waveAngle += 0.03 + (speedFactor / 80);
+    ctx.lineWidth = 2 + (speedFactor / 25);
 
-    // Üç katmanlı neon ışık dalgası
     for (let w = 0; w < 3; w++) {
         ctx.beginPath();
-        ctx.strokeStyle = `rgba(56, 189, 248, ${0.2 + (w * 0.15)})`;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${isEngineRunning ? (0.25 + (w * 0.15)) : 0.08})`;
         
         for (let x = 0; x < canvas.width; x += 10) {
-            const frequency = 0.005 + (currentSpeedForVisual * 0.00015);
-            const amplitude = 40 + (currentSpeedForVisual * 1.2);
+            const frequency = 0.005 + (speedFactor * 0.00015);
+            const amplitude = (isEngineRunning ? 40 : 15) + (speedFactor * 1.2);
             
             const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.6)) * amplitude 
                       * Math.cos(waveAngle * 0.4);
@@ -162,6 +181,7 @@ let lastTime = null;
 let smoothedSpeed = 0;
 let previousSpeed = 0;
 
+// MP3 veya WAV formatına göre burayı güncelleyebilirsin (MP3 önerilir)
 const files = {
     idle: "idle.wav",
     cruise: "cruise.wav",
@@ -240,7 +260,7 @@ function updateEngine(speed) {
 }
 
 document.getElementById("startBtn").onclick = async () => {
-    document.getElementById("status").innerText = "SESLER HAZIRLANIYOR...";
+    document.getElementById("status").innerText = "SİSTEM BAŞLATILIYOR...";
     await loadSounds();
     
     if(audioCtx.state === 'suspended') {
@@ -248,8 +268,12 @@ document.getElementById("startBtn").onclick = async () => {
     }
 
     switchSoundMode("idle");
+
+    // --- ATEŞLEME / GİRİŞ ANİMASYONU ---
     document.getElementById("startBtn").style.display = "none";
-    document.getElementById("status").innerText = "IDLE";
+    document.getElementById("mainContainer").classList.add("active");
+    isEngineRunning = true;
+    document.getElementById("status").innerText = "SİSTEM AKTİF - IDLE";
 
     navigator.geolocation.watchPosition(
         pos => {
@@ -279,7 +303,7 @@ document.getElementById("startBtn").onclick = async () => {
             document.getElementById("status").innerText = `${mode.toUpperCase()} (${speed} KM/H)`;
         },
         err => { 
-            document.getElementById("status").innerText = "GPS HATASI / İZİN GEREKLİ"; 
+            document.getElementById("status").innerText = "GPS BEKLENİYOR..."; 
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
