@@ -3,47 +3,55 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-
 <title>VoltSound</title>
 
 <style>
 body{
+    margin:0;
     background:#000;
     color:#fff;
-    font-family:-apple-system,sans-serif;
-    margin:0;
-    height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
     display:flex;
     flex-direction:column;
     justify-content:center;
     align-items:center;
+    height:100vh;
 }
 
 #speed{
     font-size:120px;
     font-weight:200;
+    line-height:1;
+}
+
+#unit{
+    font-size:22px;
+    opacity:.7;
+    margin-top:10px;
 }
 
 #status{
-    margin-top:10px;
-    opacity:.75;
+    margin-top:15px;
+    font-size:16px;
+    opacity:.6;
 }
 
 button{
-    margin-top:30px;
+    margin-top:35px;
     padding:16px 40px;
+    font-size:22px;
     border:none;
     border-radius:12px;
-    font-size:22px;
 }
 </style>
 </head>
 <body>
 
 <div id="speed">0</div>
+<div id="unit">km/h</div>
 <div id="status">Hazır</div>
 
-<button id="startBtn">BAŞLAT</button>
+<button id="startBtn">START</button>
 
 <script>
 
@@ -56,7 +64,7 @@ let lastTime = null;
 
 let previousKmh = 0;
 
-const audioFiles = {
+const sounds = {
     idle: "idle.wav",
     cruise: "cruise.wav",
     sport: "sport.wav",
@@ -72,17 +80,16 @@ function playMode(mode){
         currentAudio.currentTime = 0;
     }
 
-    currentAudio = new Audio(audioFiles[mode]);
-
+    currentAudio = new Audio(sounds[mode]);
     currentAudio.loop = true;
-    currentAudio.volume = 0.75;
+    currentAudio.volume = 0.7;
 
-    currentAudio.play();
+    currentAudio.play().catch(()=>{});
 
     currentMode = mode;
 }
 
-function distance(lat1, lon1, lat2, lon2){
+function distanceMeters(lat1, lon1, lat2, lon2){
 
     const R = 6371000;
 
@@ -96,32 +103,21 @@ function distance(lat1, lon1, lat2, lon2){
         Math.sin(dLon/2) *
         Math.sin(dLon/2);
 
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const c = 2 * Math.atan2(
+        Math.sqrt(a),
+        Math.sqrt(1-a)
+    );
+
+    return R * c;
 }
 
-function updateSound(kmh){
+function updatePitch(kmh){
 
     if(!currentAudio) return;
 
     let accel = kmh - previousKmh;
 
-    let pitch = 1;
-
-    if(currentMode === "idle"){
-        pitch = 0.85 + (kmh / 20) * 0.40;
-    }
-
-    if(currentMode === "cruise"){
-        pitch = 0.95 + ((kmh-20)/40) * 0.45;
-    }
-
-    if(currentMode === "sport"){
-        pitch = 1.10 + ((kmh-60)/60) * 0.50;
-    }
-
-    if(currentMode === "boost"){
-        pitch = 1.35 + ((kmh-120)/80) * 0.35;
-    }
+    let pitch = 0.80 + (kmh / 150);
 
     if(accel > 1){
         pitch += 0.08;
@@ -131,26 +127,32 @@ function updateSound(kmh){
         pitch -= 0.08;
     }
 
-    pitch = Math.max(0.8, Math.min(2.0, pitch));
+    pitch = Math.max(0.80, Math.min(2.00, pitch));
 
     currentAudio.playbackRate = pitch;
 
-    let volume = 0.65;
+    let targetVolume = 0.65;
 
     if(accel > 1){
-        volume += 0.10;
+        targetVolume = 0.80;
     }
 
     if(accel < -1){
-        volume -= 0.10;
+        targetVolume = 0.50;
     }
 
-    volume = Math.max(0.35, Math.min(1.0, volume));
-
     currentAudio.volume +=
-        (volume - currentAudio.volume) * 0.15;
+        (targetVolume - currentAudio.volume) * 0.15;
 
     previousKmh = kmh;
+}
+
+function chooseMode(kmh){
+
+    if(kmh < 30) return "idle";
+    if(kmh < 80) return "cruise";
+    if(kmh < 140) return "sport";
+    return "boost";
 }
 
 document.getElementById("startBtn").onclick = () => {
@@ -170,7 +172,7 @@ document.getElementById("startBtn").onclick = () => {
             if(lastLat !== null){
 
                 const meters =
-                    distance(
+                    distanceMeters(
                         lastLat,
                         lastLon,
                         lat,
@@ -178,11 +180,11 @@ document.getElementById("startBtn").onclick = () => {
                     );
 
                 const seconds =
-                    (now-lastTime)/1000;
+                    (now - lastTime) / 1000;
 
                 if(seconds > 0){
                     kmh =
-                        (meters/seconds) * 3.6;
+                        (meters / seconds) * 3.6;
                 }
             }
 
@@ -195,15 +197,11 @@ document.getElementById("startBtn").onclick = () => {
             document.getElementById("speed").innerText =
                 kmh;
 
-            let mode = "idle";
-
-            if(kmh >= 20) mode = "cruise";
-            if(kmh >= 60) mode = "sport";
-            if(kmh >= 120) mode = "boost";
+            const mode = chooseMode(kmh);
 
             playMode(mode);
 
-            updateSound(kmh);
+            updatePitch(kmh);
 
             document.getElementById("status").innerText =
                 mode.toUpperCase();
@@ -218,7 +216,8 @@ document.getElementById("startBtn").onclick = () => {
 
         {
             enableHighAccuracy:true,
-            maximumAge:0
+            maximumAge:0,
+            timeout:10000
         }
 
     );
