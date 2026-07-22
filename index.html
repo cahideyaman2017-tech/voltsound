@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Organic Start Edition</title>
+<title>VoltSound - Demo Simulation Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -119,13 +119,13 @@ canvas {
 }
 
 #status{
-    margin-bottom: 20px;
-    padding: 10px 20px;
+    margin-bottom: 15px;
+    padding: 8px 16px;
     background: rgba(56, 189, 248, 0.15);
     color: #38bdf8;
     border-radius: 20px;
     display: inline-block;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
@@ -140,8 +140,8 @@ canvas {
 }
 
 button{
-    padding: 18px 40px;
-    font-size: 18px;
+    padding: 16px 36px;
+    font-size: 16px;
     font-weight: 800;
     font-family: 'Orbitron', sans-serif;
     color: #000;
@@ -160,7 +160,7 @@ button:hover {
     transform: scale(1.05);
 }
 
-/* Sıvı Cam (Liquid Glass) Tarzı Kırmızı-Siyah Durdur Butonu */
+/* Sıvı Cam Durdur Butonu */
 button.stop-btn {
     background: rgba(185, 28, 28, 0.25);
     backdrop-filter: blur(12px);
@@ -168,8 +168,9 @@ button.stop-btn {
     border: 1px solid rgba(239, 68, 68, 0.4);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37), inset 0 1px 1px rgba(255, 255, 255, 0.2);
     color: #fca5a5;
-    font-size: 15px;
-    padding: 12px 28px;
+    font-size: 14px;
+    padding: 10px 24px;
+    margin-top: 6px;
 }
 button.stop-btn:hover {
     background: rgba(220, 38, 38, 0.4);
@@ -178,14 +179,46 @@ button.stop-btn:hover {
     color: #fff;
     transform: scale(1.05);
 }
+
+/* Sağ Üst Köşedeki Demo Test Etme Butonu */
+.demo-btn {
+    position: fixed;
+    top: 25px;
+    right: 25px;
+    background: rgba(56, 189, 248, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    color: #38bdf8;
+    padding: 10px 20px;
+    border-radius: 12px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+    transition: all 0.2s ease;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.demo-btn:hover, .demo-btn.active {
+    background: rgba(56, 189, 248, 0.35);
+    color: #fff;
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.5);
+    transform: scale(1.05);
+}
 </style>
 </head>
 <body>
 
 <canvas id="waveCanvas"></canvas>
 
-<!-- Ekran Altı Kuzey Işıkları / Aurora Efekti -->
+<!-- Ekran Altı Kuzey Işıkları Efekti -->
 <div class="aurora-glow"></div>
+
+<!-- Sağ Üst Demo Simülasyon Butonu -->
+<button id="demoBtn" class="demo-btn">DEMO HIZLANDIR</button>
 
 <div class="container" id="mainContainer">
     <div class="slider-wrapper">
@@ -207,7 +240,9 @@ const ctx = canvas.getContext("2d");
 let currentSpeedForVisual = 0;
 let waveAngle = 0;
 let isEngineRunning = false;
-let waveScaleFactor = 0.0; // Dalgaların büyüme katsayısı (0'dan başlayıp 1'e çıkacak)
+let waveScaleFactor = 0.0;
+let isSimulating = false; // Demo hızlandırma durumu
+let simulatedSpeed = 0;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -234,7 +269,6 @@ function animateWaves() {
         for (let x = 0; x < canvas.width; x += 10) {
             const frequency = 0.005 + (speedFactor * 0.00015);
             const baseAmplitude = (isEngineRunning ? 40 : 15) + (speedFactor * 1.2);
-            // Genlik başlangıçta küçük başlar, scale faktörü ile normal boyutuna ulaşır
             const amplitude = baseAmplitude * waveScaleFactor;
             
             const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.6)) * amplitude 
@@ -353,6 +387,28 @@ function updateEngine(speed) {
     previousSpeed = speed;
 }
 
+// DEMO BUTONU MANTIĞI (Basılı tutunca hızlanır, bırakınca yavaşlar)
+const demoBtn = document.getElementById("demoBtn");
+
+function startSimulation() {
+    if(!isEngineRunning) return;
+    isSimulating = true;
+    demoBtn.classList.add("active");
+}
+
+function stopSimulation() {
+    isSimulating = false;
+    demoBtn.classList.remove("active");
+}
+
+demoBtn.addEventListener("mousedown", startSimulation);
+demoBtn.addEventListener("mouseup", stopSimulation);
+demoBtn.addEventListener("mouseleave", stopSimulation);
+
+// Mobil / Dokunmatik ekranlar için
+demoBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startSimulation(); });
+demoBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopSimulation(); });
+
 document.getElementById("actionBtn").onclick = async () => {
     const btn = document.getElementById("actionBtn");
     btn.innerText = "BAŞLATILIYOR...";
@@ -369,8 +425,6 @@ document.getElementById("actionBtn").onclick = async () => {
     switchSoundMode("idle");
     
     isEngineRunning = true;
-
-    // DALGALARI KÜÇÜKTEN BÜYÜĞE DOĞRU AÇ (Fade-In / Grow Effect)
     waveScaleFactor = 0.0;
     const growInterval = setInterval(() => {
         waveScaleFactor += 0.05;
@@ -380,8 +434,10 @@ document.getElementById("actionBtn").onclick = async () => {
         }
     }, 25);
 
+    // GPS Takibi (Gerçek Sürüş İçin)
     watchId = navigator.geolocation.watchPosition(
         pos => {
+            if(isSimulating) return; // Demo modundaysa GPS'i ezip simülasyonu çalıştıracağız
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const now = Date.now();
@@ -398,7 +454,6 @@ document.getElementById("actionBtn").onclick = async () => {
             const speed = Math.max(0, Math.round(smoothedSpeed));
 
             currentSpeedForVisual = speed;
-
             const mode = chooseMode(speed);
             switchSoundMode(mode);
             updateEngine(speed);
@@ -406,14 +461,43 @@ document.getElementById("actionBtn").onclick = async () => {
             document.getElementById("status").innerText = `${mode.toUpperCase()} (${speed} KM/H)`;
         },
         err => { 
-            document.getElementById("status").innerText = "GPS BEKLENİYOR..."; 
+            if(!isSimulating) document.getElementById("status").innerText = "GPS BEKLENİYOR (DEMO KULLANABİLİRSİN)"; 
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
 };
 
+// Demo hız simülasyon döngüsü (Her karede çalışır)
+function runSimulationLoop() {
+    if(isEngineRunning) {
+        if(isSimulating) {
+            simulatedSpeed += 3; // Basılı tuttukça hız artar
+            if(simulatedSpeed > 180) simulatedSpeed = 180;
+        } else {
+            simulatedSpeed -= 4; // Bırakınca hız rölantiye düşer
+            if(simulatedSpeed < 0) simulatedSpeed = 0;
+        }
+
+        if(isSimulating || simulatedSpeed > 0) {
+            smoothedSpeed += (simulatedSpeed - smoothedSpeed) * 0.2;
+            const speed = Math.max(0, Math.round(smoothedSpeed));
+            currentSpeedForVisual = speed;
+
+            const mode = chooseMode(speed);
+            switchSoundMode(mode);
+            updateEngine(speed);
+
+            document.getElementById("status").innerText = `${mode.toUpperCase()} (${speed} KM/H)`;
+        }
+    }
+    requestAnimationFrame(runSimulationLoop);
+}
+runSimulationLoop();
+
 document.getElementById("stopBtn").onclick = () => {
     if(!audioCtx) return;
+    isSimulating = false;
+    demoBtn.classList.remove("active");
 
     if(activeGain) {
         try {
@@ -426,7 +510,6 @@ document.getElementById("stopBtn").onclick = () => {
     document.getElementById("startPanel").classList.remove("zoom-out");
     document.getElementById("actionBtn").innerText = "BAŞLAT";
 
-    // DALGALARI YAVAŞÇA KÜÇÜLTEREK SÖNDÜR
     const decayInterval = setInterval(() => {
         waveScaleFactor -= 0.05;
         if (waveScaleFactor <= 0) {
@@ -452,6 +535,7 @@ document.getElementById("stopBtn").onclick = () => {
         lastLon = null;
         lastTime = null;
         smoothedSpeed = 0;
+        simulatedSpeed = 0;
         previousSpeed = 0;
         currentSpeedForVisual = 0;
         isEngineRunning = false;
