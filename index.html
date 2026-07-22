@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Smooth Shutdown</title>
+<title>VoltSound - Smooth Transition</title>
 
 <style>
 body{
@@ -37,15 +37,30 @@ canvas {
     box-shadow: 0 0 50px rgba(56, 189, 248, 0.15);
     backdrop-filter: blur(16px);
     z-index: 2;
-    transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    width: 280px;
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-.metric-box {
-    display: none;
+/* Tüm ekran panelleri / buton grupları için ortak geçiş alanı */
+.panel {
+    position: absolute;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
-.container.active .metric-box {
-    display: block;
+/* Aktif olmayan paneller gizlenir ve tıklanamaz */
+.panel.hidden {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
 }
 
 #status{
@@ -84,7 +99,6 @@ button:hover {
 button.stop-btn {
     background: #ef4444;
     box-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
-    margin-top: 10px;
     color: #fff;
     font-size: 16px;
     padding: 12px 30px;
@@ -100,11 +114,14 @@ button.stop-btn:hover {
 <canvas id="waveCanvas"></canvas>
 
 <div class="container" id="mainContainer">
-    <button id="actionBtn">BAŞLAT</button>
+    <!-- Başlangıç Paneli -->
+    <div id="startPanel" class="panel">
+        <button id="actionBtn">BAŞLAT</button>
+    </div>
     
-    <div class="metric-box" id="metricBox">
+    <!-- Sürüş / Kontrol Paneli -->
+    <div id="metricPanel" class="panel hidden">
         <div id="status">SİSTEM HAZIR</div>
-        <br>
         <button id="stopBtn" class="stop-btn">DURDUR</button>
     </div>
 </div>
@@ -217,7 +234,6 @@ function switchSoundMode(mode) {
     if(mode === currentMode) return;
     if(!soundBuffers[mode]) return;
 
-    // Eski ses varsa önce onu yumuşakça kapatıp sonlandır
     if(activeSource && activeGain) {
         try {
             activeGain.gain.setValueAtTime(activeGain.gain.value, audioCtx.currentTime);
@@ -227,14 +243,12 @@ function switchSoundMode(mode) {
         } catch(e){}
     }
 
-    // Yeni kaynak ve ona özel gain (ses kontrolü) oluştur
     const source = audioCtx.createBufferSource();
     source.buffer = soundBuffers[mode];
     source.loop = true;
 
     const gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0.01, audioCtx.currentTime);
-    // Yeni ses açılırken çıt pıt sesini engellemek için mini bir fade-in
     gainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.15);
 
     source.connect(gainNode);
@@ -261,6 +275,7 @@ function updateEngine(speed) {
     previousSpeed = speed;
 }
 
+// BAŞLAT
 document.getElementById("actionBtn").onclick = async () => {
     document.getElementById("actionBtn").innerText = "BAŞLATILIYOR...";
     await loadSounds();
@@ -271,8 +286,9 @@ document.getElementById("actionBtn").onclick = async () => {
 
     switchSoundMode("idle");
 
-    document.getElementById("actionBtn").style.display = "none";
-    document.getElementById("mainContainer").classList.add("active");
+    // Butonlar arası pürüzsüz panel geçişi (Slide / Fade)
+    document.getElementById("startPanel").classList.add("hidden");
+    document.getElementById("metricPanel").classList.remove("hidden");
     isEngineRunning = true;
 
     watchId = navigator.geolocation.watchPosition(
@@ -307,10 +323,11 @@ document.getElementById("actionBtn").onclick = async () => {
     );
 };
 
+// DURDUR
 document.getElementById("stopBtn").onclick = () => {
     if(!audioCtx) return;
 
-    // DURDUR butonuna basınca 0.5 saniye boyunca sesi tertemiz sıfıra indir
+    // Sesi yumuşakça kapat
     if(activeGain) {
         try {
             activeGain.gain.setValueAtTime(activeGain.gain.value, audioCtx.currentTime);
@@ -318,7 +335,11 @@ document.getElementById("stopBtn").onclick = () => {
         } catch(e){}
     }
 
-    // Ses tamamen sönümlendikten sonra sistemi kapat
+    // Panel geçişini hemen başlat (DURDUR paneli solup BAŞLAT paneli yerine süzülerek gelsin)
+    document.getElementById("metricPanel").classList.add("hidden");
+    document.getElementById("startPanel").classList.remove("hidden");
+
+    // Ses ve GPS verilerini kapanış animasyonu bitince tamamen sıfırla
     setTimeout(() => {
         if(activeSource) {
             try { activeSource.stop(); } catch(e){}
@@ -340,8 +361,6 @@ document.getElementById("stopBtn").onclick = () => {
         currentSpeedForVisual = 0;
         isEngineRunning = false;
 
-        document.getElementById("mainContainer").classList.remove("active");
-        document.getElementById("actionBtn").style.display = "inline-block";
         document.getElementById("actionBtn").innerText = "BAŞLAT";
         document.getElementById("status").innerText = "SİSTEM HAZIR";
     }, 550);
