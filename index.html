@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Ultra Smooth Edition</title>
+<title>VoltSound - Ultimate Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -348,13 +348,14 @@ function chooseMode(speed){
     return "boost";
 }
 
-// SESLER ARASI YUMUŞAK GEÇİŞ (CROSSFADE)
+// SPORT -> BOOST GEÇİŞLERİNİ DAHA UZUN VE YUMUŞAK YAPAN CROSSFADE MANTIĞI
 function switchSoundMode(mode) {
     if(mode === currentMode) return;
     if(!soundBuffers[mode]) return;
 
     const now = audioCtx.currentTime;
-    const FADE_TIME = 0.5; // Seslerin birbiri içinde erimesi için yarım saniye
+    // Eğer Boost moduna geçiliyorsa geçiş süresini daha uzun tutarak kademeli erime sağlıyoruz
+    const FADE_TIME = (mode === 'boost' || currentMode === 'boost') ? 0.8 : 0.4;
 
     let oldSource = activeSource;
     let oldGain = activeGain;
@@ -392,12 +393,14 @@ function updateEngine(speed) {
     let rate = 0.80 + (speed / 120);
     rate = Math.max(0.75, Math.min(2.2, rate));
 
-    // Perde (devir) değişimini aniden değil, yumuşak geçişle uygula
-    activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.15);
+    // Boost moduna yaklaşırken devir/perde tepkisini de daha yumuşak filtreliyoruz
+    const smoothingTime = (speed > 130) ? 0.3 : 0.12;
+
+    activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, smoothingTime);
 
     let targetFreq = 400 + (speed * 45);
     targetFreq = Math.max(400, Math.min(9000, targetFreq));
-    biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.15);
+    biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, smoothingTime);
 }
 
 // GAZ KONTROLÜ
