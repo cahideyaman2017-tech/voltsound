@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Tesla Edition</title>
+<title>VoltSound - On/Off Edition</title>
 
 <style>
 body{
@@ -38,15 +38,6 @@ canvas {
     backdrop-filter: blur(16px);
     z-index: 2;
     transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Tesla Logosu Stili */
-.tesla-logo {
-    width: 36px;
-    height: 36px;
-    margin: 0 auto 15px auto;
-    fill: #38bdf8;
-    filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.6));
 }
 
 .metric-box {
@@ -126,11 +117,6 @@ button.stop-btn:hover {
 <canvas id="waveCanvas"></canvas>
 
 <div class="container" id="mainContainer">
-    <!-- Tesla "T" Logosu SVG -->
-    <svg class="tesla-logo" viewBox="0 0 342 335" xmlns="http://www.w3.org/2000/svg">
-        <path d="M0 .1h342v45H0V.1zm113.5 86.8c0-10.5 4.8-17.5 14.5-21 9.7-3.5 25.5-5.2 47.4-5.2h28.1v238.4H175V65.9h-28.5c-15.6 0-26.6 1.4-33 4.2-6.4 2.8-10.1 7.7-11.1 14.8H113.5zM203 264.3V65.9h29.9c16.3 0 27.8 1.5 34.5 4.5 6.7 3 10.6 8.2 11.6 15.6 1 7.4 1.5 18 1.5 31.8v146.5H203z"/>
-    </svg>
-
     <button id="actionBtn">MOTORU ÇALIŞTIR</button>
     
     <div class="metric-box" id="metricBox">
