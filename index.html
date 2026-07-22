@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Ultimate Smooth Flow</title>
+<title>VoltSound - Seamless Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -348,43 +348,48 @@ function chooseMode(speed){
     return "boost";
 }
 
-// SPORT <-> BOOST GEÇİŞLERİNE ÖZEL UZATILMIŞ / YUMUŞATILMIŞ CROSSFADE
+// GERÇEK EŞ ZAMANLI ÇAPRAZ GEÇİŞ (TRUE CROSSFADE - DURAKSIZ HARMANLAMA)
 function switchSoundMode(mode) {
     if(mode === currentMode) return;
     if(!soundBuffers[mode]) return;
 
     const now = audioCtx.currentTime;
-    // Sport ve Boost geçişlerinde (giriş veya çıkış) seslerin birbirine pürüzsüzce karışması için süreyi uzattık
     const isSportBoostTransition = (currentMode === 'sport' && mode === 'boost') || (currentMode === 'boost' && mode === 'sport');
     const FADE_TIME = isSportBoostTransition ? 0.75 : 0.45;
 
     let oldSource = activeSource;
     let oldGain = activeGain;
 
+    // 1. Yeni sesi başlat ve sıfırdan tepeye (1.0) doğru açmaya başla
+    const newSource = audioCtx.createBufferSource();
+    newSource.buffer = soundBuffers[mode];
+    newSource.loop = true;
+
+    const newGain = audioCtx.createGain();
+    newGain.gain.setValueAtTime(0.0, now);
+    newGain.gain.linearRampToValueAtTime(1.0, now + FADE_TIME);
+
+    // Güncel devir/hız oranını yeni sese anında uygula
+    let rate = 0.80 + (currentSpeedForVisual / 160);
+    newSource.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.65, rate)), now);
+
+    newSource.connect(newGain);
+    newGain.connect(biquadFilter);
+    newSource.start(now);
+
+    // 2. Eski sesi aynı anda kısarak kapat (İkisi bu süre zarfında üst üste biner, boşluk asla kalmaz)
     if(oldSource && oldGain) {
         try {
             oldGain.gain.setValueAtTime(oldGain.gain.value, now);
-            oldGain.gain.linearRampToValueAtTime(0, now + FADE_TIME);
+            oldGain.gain.linearRampToValueAtTime(0.0, now + FADE_TIME);
             setTimeout(() => {
                 try { oldSource.stop(); } catch(e){}
             }, (FADE_TIME + 0.1) * 1000);
         } catch(e){}
     }
 
-    const source = audioCtx.createBufferSource();
-    source.buffer = soundBuffers[mode];
-    source.loop = true;
-
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.01, now);
-    gainNode.gain.linearRampToValueAtTime(1.0, now + FADE_TIME);
-
-    source.connect(gainNode);
-    gainNode.connect(biquadFilter);
-    source.start(now);
-
-    activeSource = source;
-    activeGain = gainNode;
+    activeSource = newSource;
+    activeGain = newGain;
     currentMode = mode;
 }
 
@@ -394,7 +399,6 @@ function updateEngine(speed) {
     let rate = 0.80 + (speed / 160);
     rate = Math.max(0.75, Math.min(1.65, rate));
 
-    // Sport / Boost sınırında devir tepkisini daha da yumuşak kaydırarak sarsıntıyı önledik
     const smoothingTime = (speed >= 130 && speed <= 150) ? 0.35 : 0.2; 
     activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, smoothingTime);
 
