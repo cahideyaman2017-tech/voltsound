@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Minimal Wave</title>
+<title>VoltSound - PowerDown Edition</title>
 
 <style>
 body{
@@ -158,6 +158,7 @@ animateWaves();
 let audioCtx = null;
 let soundBuffers = {};
 let activeSource = null;
+let masterGain = null;
 let biquadFilter = null;
 let watchId = null;
 
@@ -178,10 +179,18 @@ const files = {
 async function loadSounds() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Master ses kontrolü (Fade-out için)
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 1.0;
+
         biquadFilter = audioCtx.createBiquadFilter();
         biquadFilter.type = "lowpass";
         biquadFilter.frequency.value = 400;
-        biquadFilter.connect(audioCtx.destination);
+
+        // Bağlantı: Kaynak -> Filtre -> MasterGain -> Hoparlör
+        biquadFilter.connect(masterGain);
+        masterGain.connect(audioCtx.destination);
     }
 
     for (let key in files) {
@@ -224,6 +233,7 @@ function switchSoundMode(mode) {
     source.buffer = soundBuffers[mode];
     source.loop = true;
 
+    // Filtreye bağlıyoruz (MasterGain zaten filtrenin sonuna bağlı)
     source.connect(biquadFilter);
     source.start(0);
 
@@ -254,6 +264,9 @@ document.getElementById("actionBtn").onclick = async () => {
     if(audioCtx.state === 'suspended') {
         await audioCtx.resume();
     }
+
+    // Başlatırken ses seviyesini tam aç (önceki kapanıştan kalan olabilir diye)
+    masterGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
 
     switchSoundMode("idle");
 
@@ -294,29 +307,40 @@ document.getElementById("actionBtn").onclick = async () => {
 };
 
 document.getElementById("stopBtn").onclick = () => {
-    if(activeSource) {
-        try { activeSource.stop(); } catch(e){}
-        activeSource = null;
-    }
-    currentMode = "";
+    if(!audioCtx) return;
 
-    if(watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-    }
+    // --- ELEKTRONİK KAPANIŞ (SHUTDOWN FADE-OUT) ---
+    // 0.4 saniye içinde ses seviyesini sıfıra indirerek pürüzsüzce kapatıyoruz
+    const fadeDuration = 0.4;
+    masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + fadeDuration);
 
-    lastLat = null;
-    lastLon = null;
-    lastTime = null;
-    smoothedSpeed = 0;
-    previousSpeed = 0;
-    currentSpeedForVisual = 0;
-    isEngineRunning = false;
+    // Kapanış efekti bittikten sonra (0.45 sn sonra) her şeyi tamamen durdur
+    setTimeout(() => {
+        if(activeSource) {
+            try { activeSource.stop(); } catch(e){}
+            activeSource = null;
+        }
+        currentMode = "";
 
-    document.getElementById("mainContainer").classList.remove("active");
-    document.getElementById("actionBtn").style.display = "inline-block";
-    document.getElementById("actionBtn").innerText = "BAŞLAT";
-    document.getElementById("status").innerText = "SİSTEM HAZIR";
+        if(watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+        }
+
+        lastLat = null;
+        lastLon = null;
+        lastTime = null;
+        smoothedSpeed = 0;
+        previousSpeed = 0;
+        currentSpeedForVisual = 0;
+        isEngineRunning = false;
+
+        document.getElementById("mainContainer").classList.remove("active");
+        document.getElementById("actionBtn").style.display = "inline-block";
+        document.getElementById("actionBtn").innerText = "BAŞLAT";
+        document.getElementById("status").innerText = "SİSTEM HAZIR";
+    }, 450);
 };
 </script>
 
