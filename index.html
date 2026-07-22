@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Warp Wave Edition</title>
+<title>VoltSound - Neon Wave</title>
 
 <style>
 body{
@@ -90,7 +90,7 @@ button:hover {
 </head>
 <body>
 
-<canvas id="space"></canvas>
+<canvas id="waveCanvas"></canvas>
 
 <div class="container">
     <div id="speed">0</div>
@@ -101,12 +101,10 @@ button:hover {
 </div>
 
 <script>
-// --- YILDIZ VE IŞIK DALGALARI ANİMASYONU ---
-const canvas = document.getElementById("space");
+// --- NEON IŞIK DALGALARI ANİMASYONU ---
+const canvas = document.getElementById("waveCanvas");
 const ctx = canvas.getContext("2d");
 
-let stars = [];
-const numStars = 250;
 let currentSpeedForVisual = 0;
 let waveAngle = 0;
 
@@ -117,62 +115,28 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-for (let i = 0; i < numStars; i++) {
-    stars.push({
-        x: (Math.random() - 0.5) * canvas.width,
-        y: (Math.random() - 0.5) * canvas.height,
-        z: Math.random() * canvas.width
-    });
-}
-
-function animateSpace() {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+function animateWaves() {
+    // Siyah arka planı hafif iz bırakacak şekilde temizliyoruz
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     
-    // 1. Yıldız Warp Efekti
-    const warpSpeed = 1 + (currentSpeedForVisual / 2.5);
+    // Hızlandıkça dalgaların hareket hızı ve genliği artar
+    waveAngle += 0.04 + (currentSpeedForVisual / 80);
+    ctx.lineWidth = 2 + (currentSpeedForVisual / 25);
 
-    for (let i = 0; i < stars.length; i++) {
-        let s = stars[i];
-        s.z -= warpSpeed;
-
-        if (s.z <= 0) {
-            s.z = canvas.width;
-            s.x = (Math.random() - 0.5) * canvas.width;
-            s.y = (Math.random() - 0.5) * canvas.height;
-        }
-
-        const k = 250 / s.z;
-        const px = s.x * k + cx;
-        const py = s.y * k + cy;
-
-        if (px >= 0 && px <= canvas.width && py >= 0 && py <= canvas.height) {
-            const size = Math.max(1, (1 - s.z / canvas.width) * 3);
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(px, py, size, size);
-        }
-    }
-
-    // 2. Neon Işık Dalgaları (Wave / Pulse Efekti)
-    waveAngle += 0.03 + (currentSpeedForVisual / 100);
-    ctx.lineWidth = 2 + (currentSpeedForVisual / 30);
-
-    // Ekranda süzülen çoklu neon dalgalar çziyoruz
+    // Üç katmanlı neon ışık dalgası
     for (let w = 0; w < 3; w++) {
         ctx.beginPath();
-        // Hızlandıkça rengi turkuazdan neon mora/maviye kayabilir ya da parlak mavi kalır
-        ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + (w * 0.1)})`;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.2 + (w * 0.15)})`;
         
-        for (let x = 0; x < canvas.width; x += 15) {
-            // Hızlandıkça dalganın yüksekliği (genliği) ve frekansı artar
-            const frequency = 0.008 + (currentSpeedForVisual * 0.0002);
-            const amplitude = 30 + (currentSpeedForVisual * 0.8);
+        for (let x = 0; x < canvas.width; x += 10) {
+            const frequency = 0.005 + (currentSpeedForVisual * 0.00015);
+            const amplitude = 40 + (currentSpeedForVisual * 1.2);
             
-            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.8)) * amplitude 
-                      * Math.sin(waveAngle * 0.5); // Dalgaların kendi içinde bükülmesi için
+            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.6)) * amplitude 
+                      * Math.cos(waveAngle * 0.4);
 
             if (x === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
@@ -180,9 +144,9 @@ function animateSpace() {
         ctx.stroke();
     }
 
-    requestAnimationFrame(animateSpace);
+    requestAnimationFrame(animateWaves);
 }
-animateSpace();
+animateWaves();
 
 
 // --- SES VE HIZ MOTORU ---
@@ -304,7 +268,6 @@ document.getElementById("startBtn").onclick = async () => {
             smoothedSpeed += (kmh - smoothedSpeed) * 0.15;
             const speed = Math.max(0, Math.round(smoothedSpeed));
 
-            // Görsel efektlere hızı aktarıyoruz (Yıldızlar + Işık Dalgaları)
             currentSpeedForVisual = speed;
 
             document.getElementById("speed").innerText = speed;
