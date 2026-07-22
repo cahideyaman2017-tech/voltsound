@@ -3,61 +3,104 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound</title>
+<title>VoltSound - Test Ekranı</title>
 
 <style>
 body{
     margin:0;
-    background:#000;
-    color:#fff;
-    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    background:#09090b;
+    color:#fafafa;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     display:flex;
     flex-direction:column;
     justify-content:center;
     align-items:center;
     height:100vh;
+    overflow:hidden;
+}
+
+.container{
+    text-align:center;
+    background:rgba(24, 24, 27, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 40px 60px;
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px);
 }
 
 #speed{
-    font-size:120px;
-    font-weight:200;
-    line-height:1;
+    font-size: 140px;
+    font-weight: 200;
+    line-height: 1;
+    letter-spacing: -2px;
+    color: #38bdf8;
+}
+
+.unit {
+    font-size: 20px;
+    opacity: 0.5;
+    margin-top: 5px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
 }
 
 #status{
-    margin-top:15px;
-    opacity:.7;
-    font-size:18px;
+    margin-top: 20px;
+    padding: 6px 16px;
+    background: rgba(56, 189, 248, 0.1);
+    color: #38bdf8;
+    border-radius: 20px;
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
 }
 
 button{
-    margin-top:35px;
-    padding:16px 40px;
-    font-size:22px;
-    border:none;
-    border-radius:12px;
+    margin-top: 35px;
+    padding: 18px 45px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #000;
+    background: #38bdf8;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);
+}
+
+button:hover {
+    background: #7dd3fc;
+    transform: translateY(-2px);
 }
 </style>
 </head>
 <body>
 
-<div id="speed">0</div>
-<div id="status">READY</div>
-
-<button id="startBtn">START</button>
+<div class="container">
+    <div id="speed">0</div>
+    <div class="unit">KM/H</div>
+    <div id="status">SİSTEM HAZIR</div>
+    <br>
+    <button id="startBtn">MOTORU ÇALIŞTIR</button>
+</div>
 
 <script>
+let audioCtx = null;
+let soundBuffers = {};
+let activeSource = null;
+let biquadFilter = null;
 
-let currentAudio = null;
 let currentMode = "";
-
 let lastLat = null;
 let lastLon = null;
 let lastTime = null;
-
 let smoothedSpeed = 0;
 let previousSpeed = 0;
 
+// Ses dosyası yolları (Aynı klasörde olmalılar)
 const files = {
     idle: "idle.wav",
     cruise: "cruise.wav",
@@ -65,187 +108,120 @@ const files = {
     boost: "boost.wav"
 };
 
+async function loadSounds() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    biquadFilter = audioCtx.createBiquadFilter();
+    biquadFilter.type = "lowpass";
+    biquadFilter.frequency.value = 400; // Başlangıçta boğuk tok ses
+    biquadFilter.connect(audioCtx.destination);
+
+    for (let key in files) {
+        try {
+            document.getElementById("status").innerText = `${key.toUpperCase()} YÜKLENİYOR...`;
+            const response = await fetch(files[key]);
+            const arrayBuffer = await response.arrayBuffer();
+            soundBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
+        } catch(e) {
+            console.error(key + " yüklenemedi:", e);
+        }
+    }
+}
+
 function distanceMeters(lat1, lon1, lat2, lon2){
-
     const R = 6371000;
-
     const dLat = (lat2-lat1) * Math.PI/180;
     const dLon = (lon2-lon1) * Math.PI/180;
-
-    const a =
-        Math.sin(dLat/2) ** 2 +
-        Math.cos(lat1*Math.PI/180) *
-        Math.cos(lat2*Math.PI/180) *
-        Math.sin(dLon/2) ** 2;
-
-    return R * 2 * Math.atan2(
-        Math.sqrt(a),
-        Math.sqrt(1-a)
-    );
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 function chooseMode(speed){
-
     if(speed < 30) return "idle";
     if(speed < 80) return "cruise";
     if(speed < 140) return "sport";
     return "boost";
 }
 
-async function fadeToMode(mode){
-
+function switchSoundMode(mode) {
     if(mode === currentMode) return;
+    if(!soundBuffers[mode]) return;
 
-    const oldAudio = currentAudio;
+    if(activeSource) {
+        try { activeSource.stop(); } catch(e){}
+    }
 
-    const newAudio = new Audio(files[mode]);
+    const source = audioCtx.createBufferSource();
+    source.buffer = soundBuffers[mode];
+    source.loop = true;
 
-    newAudio.loop = true;
-    newAudio.volume = 0;
+    source.connect(biquadFilter);
+    source.start(0);
 
-    try{
-        await newAudio.play();
-    }catch(e){}
-
-    currentAudio = newAudio;
+    activeSource = source;
     currentMode = mode;
-
-    let step = 0;
-
-    const fade = setInterval(()=>{
-
-        step += 0.05;
-
-        if(oldAudio){
-            oldAudio.volume = Math.max(0, 1-step);
-        }
-
-        newAudio.volume = Math.min(0.75, step*0.75);
-
-        if(step >= 1){
-
-            clearInterval(fade);
-
-            if(oldAudio){
-                oldAudio.pause();
-            }
-        }
-
-    },50);
 }
 
-function updateEngine(speed){
-
-    if(!currentAudio) return;
+function updateEngine(speed) {
+    if(!activeSource) return;
 
     const accel = speed - previousSpeed;
+    let rate = 0.80 + (speed / 120);
+    rate = Math.max(0.75, Math.min(2.2, rate));
 
-    let pitch = 0.85 + (speed / 130);
+    activeSource.playbackRate.setValueAtTime(rate, audioCtx.currentTime);
 
-    if(accel > 1){
-        pitch += 0.08;
-    }
-
-    if(accel < -1){
-        pitch -= 0.05;
-    }
-
-    pitch = Math.max(0.85, Math.min(2.0, pitch));
-
-    currentAudio.playbackRate = pitch;
-
-    let targetVolume = 0.65;
-
-    if(accel > 1){
-        targetVolume = 0.80;
-    }
-
-    if(accel < -1){
-        targetVolume = 0.50;
-    }
-
-    currentAudio.volume +=
-        (targetVolume - currentAudio.volume) * 0.10;
+    // Hızlandıkça filtre frekansı açılır, ses netleşir ve uzaylaşır
+    let targetFreq = 400 + (speed * 45);
+    targetFreq = Math.max(400, Math.min(9000, targetFreq));
+    biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
 
     previousSpeed = speed;
 }
 
-document.getElementById("startBtn").onclick = () => {
+document.getElementById("startBtn").onclick = async () => {
+    document.getElementById("status").innerText = "SESLER HAZIRLANIYOR...";
+    await loadSounds();
+    
+    if(audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+    }
 
-    fadeToMode("idle");
+    switchSoundMode("idle");
+    document.getElementById("startBtn").style.display = "none";
+    document.getElementById("status").innerText = "IDLE";
 
     navigator.geolocation.watchPosition(
-
         pos => {
-
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const now = Date.now();
-
             let kmh = 0;
 
             if(lastLat !== null){
-
-                const meters =
-                    distanceMeters(
-                        lastLat,
-                        lastLon,
-                        lat,
-                        lon
-                    );
-
-                const seconds =
-                    (now-lastTime)/1000;
-
-                if(seconds > 0){
-
-                    kmh =
-                        (meters/seconds)*3.6;
-                }
+                const meters = distanceMeters(lastLat, lastLon, lat, lon);
+                const seconds = (now - lastTime) / 1000;
+                if(seconds > 0) kmh = (meters / seconds) * 3.6;
             }
 
-            lastLat = lat;
-            lastLon = lon;
-            lastTime = now;
+            lastLat = lat; lastLon = lon; lastTime = now;
+            smoothedSpeed += (kmh - smoothedSpeed) * 0.15;
+            const speed = Math.max(0, Math.round(smoothedSpeed));
 
-            smoothedSpeed +=
-                (kmh - smoothedSpeed) * 0.15;
+            document.getElementById("speed").innerText = speed;
 
-            const speed =
-                Math.max(0,
-                Math.round(smoothedSpeed));
-
-            document.getElementById("speed").innerText =
-                speed;
-
-            const mode =
-                chooseMode(speed);
-
-            fadeToMode(mode);
-
+            const mode = chooseMode(speed);
+            switchSoundMode(mode);
             updateEngine(speed);
 
-            document.getElementById("status").innerText =
-                mode.toUpperCase();
-
+            document.getElementById("status").innerText = `${mode.toUpperCase()} (${speed} KM/H)`;
         },
-
-        err => {
-
-            document.getElementById("status").innerText =
-                "GPS ERROR";
+        err => { 
+            document.getElementById("status").innerText = "GPS HATASI / İZİN GEREKLİ"; 
         },
-
-        {
-            enableHighAccuracy:true,
-            maximumAge:0,
-            timeout:10000
-        }
-
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
-
 };
-
 </script>
 
 </body>
