@@ -24,16 +24,10 @@ body{
     line-height:1;
 }
 
-#unit{
-    font-size:22px;
-    opacity:.7;
-    margin-top:10px;
-}
-
 #status{
     margin-top:15px;
-    font-size:16px;
-    opacity:.6;
+    opacity:.7;
+    font-size:18px;
 }
 
 button{
@@ -48,8 +42,7 @@ button{
 <body>
 
 <div id="speed">0</div>
-<div id="unit">km/h</div>
-<div id="status">Hazır</div>
+<div id="status">READY</div>
 
 <button id="startBtn">START</button>
 
@@ -62,32 +55,15 @@ let lastLat = null;
 let lastLon = null;
 let lastTime = null;
 
-let previousKmh = 0;
+let smoothedSpeed = 0;
+let previousSpeed = 0;
 
-const sounds = {
+const files = {
     idle: "idle.wav",
     cruise: "cruise.wav",
     sport: "sport.wav",
     boost: "boost.wav"
 };
-
-function playMode(mode){
-
-    if(currentMode === mode) return;
-
-    if(currentAudio){
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-    }
-
-    currentAudio = new Audio(sounds[mode]);
-    currentAudio.loop = true;
-    currentAudio.volume = 0.7;
-
-    currentAudio.play().catch(()=>{});
-
-    currentMode = mode;
-}
 
 function distanceMeters(lat1, lon1, lat2, lon2){
 
@@ -97,37 +73,84 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     const dLon = (lon2-lon1) * Math.PI/180;
 
     const a =
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.sin(dLat/2) ** 2 +
         Math.cos(lat1*Math.PI/180) *
         Math.cos(lat2*Math.PI/180) *
-        Math.sin(dLon/2) *
-        Math.sin(dLon/2);
+        Math.sin(dLon/2) ** 2;
 
-    const c = 2 * Math.atan2(
+    return R * 2 * Math.atan2(
         Math.sqrt(a),
         Math.sqrt(1-a)
     );
-
-    return R * c;
 }
 
-function updatePitch(kmh){
+function chooseMode(speed){
+
+    if(speed < 30) return "idle";
+    if(speed < 80) return "cruise";
+    if(speed < 140) return "sport";
+    return "boost";
+}
+
+async function fadeToMode(mode){
+
+    if(mode === currentMode) return;
+
+    const oldAudio = currentAudio;
+
+    const newAudio = new Audio(files[mode]);
+
+    newAudio.loop = true;
+    newAudio.volume = 0;
+
+    try{
+        await newAudio.play();
+    }catch(e){}
+
+    currentAudio = newAudio;
+    currentMode = mode;
+
+    let step = 0;
+
+    const fade = setInterval(()=>{
+
+        step += 0.05;
+
+        if(oldAudio){
+            oldAudio.volume = Math.max(0, 1-step);
+        }
+
+        newAudio.volume = Math.min(0.75, step*0.75);
+
+        if(step >= 1){
+
+            clearInterval(fade);
+
+            if(oldAudio){
+                oldAudio.pause();
+            }
+        }
+
+    },50);
+}
+
+function updateEngine(speed){
 
     if(!currentAudio) return;
 
-    let accel = kmh - previousKmh;
+    const accel = speed - previousSpeed;
 
-    let pitch = 0.80 + (kmh / 150);
+    let pitch = 0.85 + (speed / 130);
 
     if(accel > 1){
         pitch += 0.08;
     }
 
     if(accel < -1){
-        pitch -= 0.08;
+        pitch -= 0.05;
     }
 
-    pitch = Math.max(0.80, Math.min(2.00, pitch));
+    pitch = Math.max(0.85, Math.min(2.0, pitch));
 
     currentAudio.playbackRate = pitch;
 
@@ -142,22 +165,14 @@ function updatePitch(kmh){
     }
 
     currentAudio.volume +=
-        (targetVolume - currentAudio.volume) * 0.15;
+        (targetVolume - currentAudio.volume) * 0.10;
 
-    previousKmh = kmh;
-}
-
-function chooseMode(kmh){
-
-    if(kmh < 30) return "idle";
-    if(kmh < 80) return "cruise";
-    if(kmh < 140) return "sport";
-    return "boost";
+    previousSpeed = speed;
 }
 
 document.getElementById("startBtn").onclick = () => {
 
-    playMode("idle");
+    fadeToMode("idle");
 
     navigator.geolocation.watchPosition(
 
@@ -180,11 +195,12 @@ document.getElementById("startBtn").onclick = () => {
                     );
 
                 const seconds =
-                    (now - lastTime) / 1000;
+                    (now-lastTime)/1000;
 
                 if(seconds > 0){
+
                     kmh =
-                        (meters / seconds) * 3.6;
+                        (meters/seconds)*3.6;
                 }
             }
 
@@ -192,16 +208,22 @@ document.getElementById("startBtn").onclick = () => {
             lastLon = lon;
             lastTime = now;
 
-            kmh = Math.round(kmh);
+            smoothedSpeed +=
+                (kmh - smoothedSpeed) * 0.15;
+
+            const speed =
+                Math.max(0,
+                Math.round(smoothedSpeed));
 
             document.getElementById("speed").innerText =
-                kmh;
+                speed;
 
-            const mode = chooseMode(kmh);
+            const mode =
+                chooseMode(speed);
 
-            playMode(mode);
+            fadeToMode(mode);
 
-            updatePitch(kmh);
+            updateEngine(speed);
 
             document.getElementById("status").innerText =
                 mode.toUpperCase();
