@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Ultimate Edition</title>
+<title>VoltSound - Balanced Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -265,21 +265,21 @@ function animateWaves() {
     const cy = canvas.height / 2;
     const speedFactor = isEngineRunning ? currentSpeedForVisual : 0;
     
-    waveAngle += 0.03 + (speedFactor / 80);
-    ctx.lineWidth = 2 + (speedFactor / 25);
+    waveAngle += 0.025 + (speedFactor / 250);
+    ctx.lineWidth = 1.5;
 
     for (let w = 0; w < 3; w++) {
         ctx.beginPath();
-        const alpha = 0.08 + ((0.25 + (w * 0.15)) * waveScaleFactor);
+        const alpha = 0.06 + ((0.18 + (w * 0.1)) * waveScaleFactor);
         ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
         
         for (let x = 0; x < canvas.width; x += 10) {
-            const frequency = 0.005 + (speedFactor * 0.00015);
-            const baseAmplitude = (isEngineRunning ? 40 : 15) + (speedFactor * 1.2);
+            const frequency = 0.004;
+            const baseAmplitude = 20 + (speedFactor * 0.15); 
             const amplitude = baseAmplitude * waveScaleFactor;
             
-            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.6)) * amplitude 
-                      * Math.cos(waveAngle * 0.4);
+            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.8)) * amplitude 
+                      * Math.cos(waveAngle * 0.3);
 
             if (x === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
@@ -348,14 +348,13 @@ function chooseMode(speed){
     return "boost";
 }
 
-// SPORT -> BOOST GEÇİŞLERİNİ DAHA UZUN VE YUMUŞAK YAPAN CROSSFADE MANTIĞI
 function switchSoundMode(mode) {
     if(mode === currentMode) return;
     if(!soundBuffers[mode]) return;
 
     const now = audioCtx.currentTime;
-    // Eğer Boost moduna geçiliyorsa geçiş süresini daha uzun tutarak kademeli erime sağlıyoruz
-    const FADE_TIME = (mode === 'boost' || currentMode === 'boost') ? 0.8 : 0.4;
+    // Geçiş süresi ne çok hantal ne de ani: ideal bir hızda (0.5 saniye) pürüzsüz erime sağlar
+    const FADE_TIME = 0.5;
 
     let oldSource = activeSource;
     let oldGain = activeGain;
@@ -393,9 +392,7 @@ function updateEngine(speed) {
     let rate = 0.80 + (speed / 120);
     rate = Math.max(0.75, Math.min(2.2, rate));
 
-    // Boost moduna yaklaşırken devir/perde tepkisini de daha yumuşak filtreliyoruz
-    const smoothingTime = (speed > 130) ? 0.3 : 0.12;
-
+    const smoothingTime = 0.15; // Tepki süresi dengelendi
     activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, smoothingTime);
 
     let targetFreq = 400 + (speed * 45);
@@ -403,7 +400,6 @@ function updateEngine(speed) {
     biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, smoothingTime);
 }
 
-// GAZ KONTROLÜ
 const throttleBar = document.getElementById("throttleBar");
 const throttleFill = document.getElementById("throttleFill");
 const throttleThumb = document.getElementById("throttleThumb");
