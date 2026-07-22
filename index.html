@@ -152,16 +152,18 @@ button:hover {
     transform: scale(1.05);
 }
 
+/* Kırmızı-Siyah Karartılmış Sportif Gradient Durdur Butonu */
 button.stop-btn {
-    background: #ef4444;
-    box-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
+    background: linear-gradient(135deg, #1f1f23 0%, #b91c1c 100%);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 25px rgba(185, 28, 28, 0.3);
     color: #fff;
     font-size: 15px;
     padding: 12px 28px;
 }
 button.stop-btn:hover {
-    background: #f87171;
-    box-shadow: 0 0 45px rgba(239, 68, 68, 0.8);
+    background: linear-gradient(135deg, #27272a 0%, #dc2626 100%);
+    box-shadow: 0 0 40px rgba(220, 38, 38, 0.6);
 }
 </style>
 </head>
@@ -335,7 +337,7 @@ function updateEngine(speed) {
 }
 
 document.getElementById("actionBtn").onclick = async () => {
-    document.getElementById("actionBtn").innerText = "YÜKLENİYOR...";
+    document.getElementById("actionBtn").innerText = "BAŞLATILIYOR...";
     await loadSounds();
     
     if(audioCtx.state === 'suspended') {
