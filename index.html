@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Tesla Safe Crossfade Edition</title>
+<title>VoltSound - Stable Speed Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -309,7 +309,6 @@ animateWarpStars();
 let audioCtx = null;
 let engineBuffer = null; 
 
-// Çift Kanal Güvenli Çapraz Geçiş (Crossfade) Değişkenleri
 let sourceA = null, gainA = null;
 let sourceB = null, gainB = null;
 let loopTimeout = null;
@@ -330,6 +329,7 @@ let lastLat = null;
 let lastLon = null;
 let lastTime = null;
 let gpsSpeed = 0;
+let rawGpsSpeed = 0;
 let smoothedSpeed = 0;
 
 const ENGINE_SOUND_FILE = "teslasound.mp3";
@@ -456,12 +456,11 @@ function updateEngineAudio(speed) {
     }
 }
 
-// KESİNTİSİZ VE ÇAKIŞMASIZ ÇİFT KANAL CROSSFADE DÖNGÜSÜ
 function startSafeCrossfadeLoop() {
     if (!isEngineRunning || !engineBuffer) return;
 
-    const duration = engineBuffer.duration; // 40 saniye
-    const transitionTime = 2.5; // İpeksi geçiş aralığı
+    const duration = engineBuffer.duration;
+    const transitionTime = 2.5;
 
     function playA() {
         if (!isEngineRunning) return;
@@ -479,8 +478,6 @@ function startSafeCrossfadeLoop() {
         sourceA.connect(lowpassFilter);
         sourceA.connect(magneticFilter);
         if(delayNode) sourceA.connect(delayNode);
-        sourceA.connect(gainA);
-        // Not: gainA çıkışı ayrıca lowpass/magnetic üzerinden masterGain'e gidiyor
         sourceA.connect(gainA);
         gainA.connect(masterGain);
 
@@ -612,7 +609,7 @@ document.getElementById("actionBtn").onclick = async () => {
             }
 
             lastLat = lat; lastLon = lon; lastTime = now;
-            gpsSpeed = kmh;
+            rawGpsSpeed = kmh;
         },
         err => {},
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
@@ -631,16 +628,19 @@ function runSimulationLoop() {
         if (throttleValue > 0 || isDraggingThrottle) {
             targetSpeed = throttleValue * 200;
         } else {
-            targetSpeed = gpsSpeed;
+            // Küçük GPS titremelerini sıfırlamak için eşik filtresi
+            targetSpeed = rawGpsSpeed < 2 ? 0 : rawGpsSpeed;
         }
 
+        // --- GÜÇLÜ VE STABİL HIZ FİLTRESİ (EMA) ---
+        // Sıçramaları yok eder, ibrenin akıcı ve pürüzsüz artıp azalmasını sağlar
         if (targetSpeed < smoothedSpeed) {
-            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.45; 
+            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.15; 
         } else {
-            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.25; 
+            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.1; 
         }
 
-        if(targetSpeed < 1 && throttleValue === 0) smoothedSpeed = 0;
+        if(targetSpeed < 1 && throttleValue === 0 && rawGpsSpeed < 2) smoothedSpeed = 0;
 
         const speed = Math.max(0, Math.round(smoothedSpeed));
         currentSpeedForVisual = speed;
@@ -701,7 +701,7 @@ document.getElementById("stopBtn").onclick = () => {
         lastLat = null;
         lastLon = null;
         lastTime = null;
-        gpsSpeed = 0;
+        rawGpsSpeed = 0;
         smoothedSpeed = 0;
         currentSpeedForVisual = 0;
 
