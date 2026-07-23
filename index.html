@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Ultimate Rock-Solid Edition</title>
+<title>VoltSound - Ultra Smooth Loop Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -340,28 +340,37 @@ async function loadEngineSound() {
             const response = await fetch(ENGINE_SOUND_FILE);
             const arrayBuffer = await response.arrayBuffer();
             let rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-            engineBuffer = applyFadeToBuffer(audioCtx, rawBuffer, 0.03); // Minik çıtırtı önleyici kenar yumuşatma
+            
+            // DÖNGÜ ÇITIRTISINI TAMAMEN YOK EDEN GELİŞMİŞ PÜRLÜZSÜZLEŞTİRME (WINDOWING)
+            engineBuffer = applySmoothLoopEnvelope(audioCtx, rawBuffer, 0.08); 
         } catch(e) {
             console.error("Tesla ses dosyası yüklenemedi:", e);
         }
     }
 }
 
-// Sesin başı ve sonu arasındaki ani geçişleri yok eden mikro fade fonksiyonu
-function applyFadeToBuffer(context, audioBuffer, fadeDuration) {
+// Sesin baş ve son kenarlarını matematiksel olarak birbirine kusursuz harmanlayan fonksiyon
+function applySmoothLoopEnvelope(context, audioBuffer, duration) {
     const numChannels = audioBuffer.numberOfChannels;
     const sampleRate = audioBuffer.sampleRate;
-    const fadeSamples = Math.floor(sampleRate * fadeDuration);
+    const fadeSamples = Math.floor(sampleRate * duration);
+    const len = audioBuffer.getChannelData(0).length;
+
+    if (fadeSamples >= len / 2) return audioBuffer;
 
     for (let c = 0; c < numChannels; c++) {
         const channelData = audioBuffer.getChannelData(c);
-        const len = channelData.length;
-        for (let i = 0; i < fadeSamples && i < len; i++) {
-            channelData[i] *= (i / fadeSamples);
-        }
-        for (let i = 0; i < fadeSamples && i < len; i++) {
-            const idx = len - 1 - i;
-            channelData[idx] *= (i / fadeSamples);
+        
+        // Baş ve son kenarları Hanning penceresi mantığıyla pürüzsüzleştir
+        for (let i = 0; i < fadeSamples; i++) {
+            const envelope = 0.5 - 0.5 * Math.cos(Math.PI * (i / fadeSamples));
+            
+            // Başlangıç yumuşatması
+            channelData[i] *= envelope;
+            
+            // Bitiş yumuşatması
+            const endIdx = len - 1 - i;
+            channelData[endIdx] *= envelope;
         }
     }
     return audioBuffer;
@@ -375,12 +384,10 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// HIZ DEĞİŞTİĞİNDE SESİ ANINDA VE KESİNTİSİZ ESNETEN FONKSİYON
 function updateEngineAudio(speed) {
     if (!audioCtx || !activeSource) return;
     const now = audioCtx.currentTime;
 
-    // Hıza göre çalma hızını (playbackRate) anında esnet
     let rate = 0.75 + (speed / 140);
     rate = Math.max(0.75, Math.min(1.85, rate));
 
@@ -389,7 +396,6 @@ function updateEngineAudio(speed) {
         activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
     } catch(e){}
 
-    // Tok filtre frekansı
     let targetFreq = 500 + (speed * 30);
     targetFreq = Math.max(500, Math.min(5000, targetFreq));
     if(lowpassFilter) {
@@ -397,7 +403,6 @@ function updateEngineAudio(speed) {
         lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.05);
     }
 
-    // 80 KM/H Sonrası Metalik Çınlama
     let metallicVolume = 0.0;
     let metallicFreq = 2400;
 
@@ -415,21 +420,19 @@ function updateEngineAudio(speed) {
         metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.05);
     }
 
-    // Ses motoru açıkken ses ASLA sıfırlanıp kopmaz, rölantide akmaya devam eder
     if(masterGain && isEngineRunning) {
         masterGain.gain.setValueAtTime(masterGain.gain.value, now);
         masterGain.gain.linearRampToValueAtTime(1.0, now + 0.05);
     }
 }
 
-// DONANIM SEVİYESİNDE ASLA KOPMAYAN TEK KAYNAKLI NATIVE LOOP
 function startEngineSource() {
     if(!engineBuffer || activeSource) return;
     const now = audioCtx.currentTime;
 
     const source = audioCtx.createBufferSource();
     source.buffer = engineBuffer;
-    source.loop = true; // Tarayıcının kendi donanımsal, kusursuz sonsuz döngüsü
+    source.loop = true; // Donanımsal kesintisiz akış
 
     source.connect(lowpassFilter);
     source.connect(metallicFilter);
