@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Chain-Loop Edition</title>
+<title>VoltSound - True Double-Buffer Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -295,11 +295,15 @@ animateWaves();
 
 let audioCtx = null;
 let engineBuffer = null; 
-let activeSource = null;
 let lowpassFilter = null;
 let metallicFilter = null;
 let metallicGain = null;
 let watchId = null;
+
+// ÇİFT BUFFER KUSURSUZ ÇAPRAZ GEÇİŞ DEĞİŞKENLERİ
+let currentSource = null;
+let currentGain = null;
+let loopTimer = null;
 
 let lastLat = null;
 let lastLon = null;
@@ -355,10 +359,10 @@ function updateEnginePitch(speed) {
 
     const now = audioCtx.currentTime;
 
-    if(activeSource) {
+    if(currentSource) {
         try {
-            activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
-            activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
+            currentSource.playbackRate.setValueAtTime(currentSource.playbackRate.value, now);
+            currentSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
         } catch(e){}
     }
 
@@ -387,28 +391,81 @@ function updateEnginePitch(speed) {
     }
 }
 
-// ZİNCİRLEME KUSURSUZ LOOP (Boşlukları tamamen yok eder)
-function playNextSegment() {
+// ÇİFT KAYNAKLI ÖRTÜŞEN ÇAPRAZ GEÇİŞ (TRUE DOUBLE-BUFFER CROSSFADE)
+function playDoubleBufferLoop() {
     if (!isEngineRunning || !engineBuffer) return;
+
+    const now = audioCtx.currentTime;
+    const duration = engineBuffer.duration;
+    const currentRate = (currentSource && currentSource.playbackRate.value > 0) ? currentSource.playbackRate.value : 0.75;
+    
+    // Sesin gerçek çalma süresine göre bitimine 0.6 saniye kala yeni kaynağı bindiriyoruz
+    const crossfadeDuration = 0.6;
+    const effectiveDuration = duration / currentRate;
+    const triggerTime = Math.max(0.5, effectiveDuration - crossfadeDuration);
+
+    const newSource = audioCtx.createBufferSource();
+    newSource.buffer = engineBuffer;
+    newSource.playbackRate.setValueAtTime(currentRate, now);
+
+    const newGain = audioCtx.createGain();
+    // Yeni ses sıfırdan başlayıp crossfade süresince tam sese (1.0) ulaşır
+    newGain.gain.setValueAtTime(0.0, now);
+    newGain.gain.linearRampToValueAtTime(1.0, now + crossfadeDuration);
+
+    newSource.connect(newGain);
+    newGain.connect(lowpassFilter);
+    newSource.connect(metallicFilter);
+    newSource.start(now);
+
+    const oldSource = currentSource;
+    const oldGain = currentGain;
+
+    if (oldGain) {
+        // Eski ses crossfade süresince yavaşça sıfıra inip kapanır
+        try {
+            oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+            oldGain.gain.linearRampToValueAtTime(0.0, now + crossfadeDuration);
+            setTimeout(() => {
+                try { oldSource.stop(); } catch(e){}
+            }, (crossfadeDuration + 0.1) * 1000);
+        } catch(e){}
+    }
+
+    currentSource = newSource;
+    currentGain = newGain;
+
+    // Bir sonraki döngüyü tam zamanında tetikle
+    loopTimer = setTimeout(() => {
+        playDoubleBufferLoop();
+    }, triggerTime * 1000);
+}
+
+function startEngine() {
+    if(!engineBuffer) return;
+    const now = audioCtx.currentTime;
 
     const source = audioCtx.createBufferSource();
     source.buffer = engineBuffer;
+    source.playbackRate.setValueAtTime(0.75, now);
 
-    let currentRate = (activeSource && activeSource.playbackRate.value > 0) ? activeSource.playbackRate.value : 0.75;
-    source.playbackRate.setValueAtTime(currentRate, audioCtx.currentTime);
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(1.0, now);
 
-    source.connect(lowpassFilter);
+    source.connect(gainNode);
+    gainNode.connect(lowpassFilter);
     source.connect(metallicFilter);
+    source.start(now);
 
-    // Ses bittiği an bir sonraki parçayı milisaniyelik boşluk bırakmadan tetikle
-    source.onended = () => {
-        if (isEngineRunning) {
-            playNextSegment();
-        }
-    };
+    currentSource = source;
+    currentGain = gainNode;
 
-    source.start(audioCtx.currentTime);
-    activeSource = source;
+    // İlk döngü tetikleyicisini başlat
+    const duration = engineBuffer.duration;
+    const triggerTime = (duration - 0.6) / 0.75;
+    loopTimer = setTimeout(() => {
+        playDoubleBufferLoop();
+    }, triggerTime * 1000);
 }
 
 const throttleBar = document.getElementById("throttleBar");
@@ -455,7 +512,7 @@ document.getElementById("actionBtn").onclick = async () => {
     }
 
     isEngineRunning = true;
-    playNextSegment();
+    startEngine();
     
     waveScaleFactor = 0.0;
     const growInterval = setInterval(() => {
@@ -535,6 +592,20 @@ document.getElementById("stopBtn").onclick = () => {
     throttleLabel.classList.remove("active");
 
     isEngineRunning = false;
+    if(loopTimer) clearTimeout(loopTimer);
+
+    if(currentGain) {
+        try {
+            currentGain.gain.setValueAtTime(currentGain.gain.value, audioCtx.currentTime);
+            currentGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+        } catch(e){}
+    }
+    if(metallicGain) {
+        try {
+            metallicGain.gain.setValueAtTime(metallicGain.gain.value, audioCtx.currentTime);
+            metallicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+        } catch(e){}
+    }
 
     document.getElementById("metricPanel").classList.remove("zoom-in");
     document.getElementById("startPanel").classList.remove("zoom-out");
@@ -549,9 +620,9 @@ document.getElementById("stopBtn").onclick = () => {
     }, 20);
 
     setTimeout(() => {
-        if(activeSource) {
-            try { activeSource.stop(); } catch(e){}
-            activeSource = null;
+        if(currentSource) {
+            try { currentSource.stop(); } catch(e){}
+            currentSource = null;
         }
 
         if(watchId !== null) {
