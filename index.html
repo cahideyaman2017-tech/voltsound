@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Glass Reflection Edition</title>
+<title>VoltSound - Tesla Safe Crossfade Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -50,7 +50,6 @@ canvas {
     border: 1px solid rgba(56, 189, 248, 0.3);
     padding: 40px 60px;
     border-radius: 32px;
-    /* Cam panelin alt zemine vuran hafif ayna yansıması ve derinlik gölgesi */
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 
                 0 0 50px rgba(56, 189, 248, 0.15),
                 inset 0 1px 1px rgba(255, 255, 255, 0.2), 
@@ -67,7 +66,6 @@ canvas {
     overflow: hidden;
 }
 
-/* Camın üst yüzeyindeki hafif parlama (Ayna Efekti Detayı) */
 .container::after {
     content: '';
     position: absolute;
@@ -310,7 +308,12 @@ animateWarpStars();
 
 let audioCtx = null;
 let engineBuffer = null; 
-let activeSource = null;
+
+// Çift Kanal Güvenli Çapraz Geçiş (Crossfade) Değişkenleri
+let sourceA = null, gainA = null;
+let sourceB = null, gainB = null;
+let loopTimeout = null;
+
 let masterGain = null;
 let lowpassFilter = null;
 let magneticFilter = null;
@@ -390,17 +393,18 @@ function distanceMeters(lat1, lon1, lat2, lon2){
 }
 
 function updateEngineAudio(speed) {
-    if (!audioCtx || !activeSource) return;
+    if (!audioCtx) return;
     const now = audioCtx.currentTime;
 
     let rate = 0.75 + (speed / 140);
     rate = Math.max(0.75, Math.min(1.85, rate));
 
-    try {
-        activeSource.playbackRate.cancelScheduledValues(now);
-        activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
-        activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.1);
-    } catch(e){}
+    if(sourceA) {
+        try { sourceA.playbackRate.cancelScheduledValues(now); sourceA.playbackRate.setValueAtTime(sourceA.playbackRate.value, now); sourceA.playbackRate.linearRampToValueAtTime(rate, now + 0.1); } catch(e){}
+    }
+    if(sourceB) {
+        try { sourceB.playbackRate.cancelScheduledValues(now); sourceB.playbackRate.setValueAtTime(sourceB.playbackRate.value, now); sourceB.playbackRate.linearRampToValueAtTime(rate, now + 0.1); } catch(e){}
+    }
 
     let targetFreq = 500 + (speed * 30);
     targetFreq = Math.max(500, Math.min(5000, targetFreq));
@@ -452,6 +456,86 @@ function updateEngineAudio(speed) {
     }
 }
 
+// KESİNTİSİZ VE ÇAKIŞMASIZ ÇİFT KANAL CROSSFADE DÖNGÜSÜ
+function startSafeCrossfadeLoop() {
+    if (!isEngineRunning || !engineBuffer) return;
+
+    const duration = engineBuffer.duration; // 40 saniye
+    const transitionTime = 2.5; // İpeksi geçiş aralığı
+
+    function playA() {
+        if (!isEngineRunning) return;
+        const now = audioCtx.currentTime;
+        const currentRate = sourceB ? sourceB.playbackRate.value : 0.75;
+
+        sourceA = audioCtx.createBufferSource();
+        sourceA.buffer = engineBuffer;
+        sourceA.playbackRate.setValueAtTime(currentRate, now);
+
+        gainA = audioCtx.createGain();
+        gainA.gain.setValueAtTime(0.0, now);
+        gainA.gain.linearRampToValueAtTime(1.0, now + transitionTime);
+
+        sourceA.connect(lowpassFilter);
+        sourceA.connect(magneticFilter);
+        if(delayNode) sourceA.connect(delayNode);
+        sourceA.connect(gainA);
+        // Not: gainA çıkışı ayrıca lowpass/magnetic üzerinden masterGain'e gidiyor
+        sourceA.connect(gainA);
+        gainA.connect(masterGain);
+
+        sourceA.start(now);
+
+        const triggerDelay = ((duration / currentRate) - transitionTime) * 1000;
+        
+        loopTimeout = setTimeout(() => {
+            playB();
+            if (gainA) {
+                gainA.gain.cancelScheduledValues(audioCtx.currentTime);
+                gainA.gain.setValueAtTime(gainA.gain.value, audioCtx.currentTime);
+                gainA.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + transitionTime);
+                setTimeout(() => { try { sourceA.stop(); } catch(e){} }, (transitionTime + 0.3) * 1000);
+            }
+        }, triggerDelay);
+    }
+
+    function playB() {
+        if (!isEngineRunning) return;
+        const now = audioCtx.currentTime;
+        const currentRate = sourceA ? sourceA.playbackRate.value : 0.75;
+
+        sourceB = audioCtx.createBufferSource();
+        sourceB.buffer = engineBuffer;
+        sourceB.playbackRate.setValueAtTime(currentRate, now);
+
+        gainB = audioCtx.createGain();
+        gainB.gain.setValueAtTime(0.0, now);
+        gainB.gain.linearRampToValueAtTime(1.0, now + transitionTime);
+
+        sourceB.connect(lowpassFilter);
+        sourceB.connect(magneticFilter);
+        if(delayNode) sourceB.connect(delayNode);
+        sourceB.connect(gainB);
+        gainB.connect(masterGain);
+
+        sourceB.start(now);
+
+        const triggerDelay = ((duration / currentRate) - transitionTime) * 1000;
+
+        loopTimeout = setTimeout(() => {
+            playA();
+            if (gainB) {
+                gainB.gain.cancelScheduledValues(audioCtx.currentTime);
+                gainB.gain.setValueAtTime(gainB.gain.value, audioCtx.currentTime);
+                gainB.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + transitionTime);
+                setTimeout(() => { try { sourceB.stop(); } catch(e){} }, (transitionTime + 0.3) * 1000);
+            }
+        }, triggerDelay);
+    }
+
+    playA();
+}
+
 function startKeepAlivePulse() {
     if (keepAliveInterval) clearInterval(keepAliveInterval);
     keepAliveInterval = setInterval(() => {
@@ -466,30 +550,6 @@ document.addEventListener("visibilitychange", () => {
         audioCtx.resume();
     }
 });
-
-function startSolidEngine() {
-    if (!engineBuffer || activeSource) return;
-    const now = audioCtx.currentTime;
-
-    activeSource = audioCtx.createBufferSource();
-    activeSource.buffer = engineBuffer;
-    activeSource.loop = true;
-
-    activeSource.connect(lowpassFilter);
-    activeSource.connect(magneticFilter);
-    if(delayNode) {
-        activeSource.connect(delayNode);
-    }
-
-    activeSource.start(now);
-
-    if(masterGain) {
-        masterGain.gain.cancelScheduledValues(now);
-        masterGain.gain.setValueAtTime(0.0, now);
-    }
-
-    startKeepAlivePulse();
-}
 
 const throttleBar = document.getElementById("throttleBar");
 const throttleFill = document.getElementById("throttleFill");
@@ -535,7 +595,8 @@ document.getElementById("actionBtn").onclick = async () => {
     }
 
     isEngineRunning = true;
-    startSolidEngine();
+    startSafeCrossfadeLoop();
+    startKeepAlivePulse();
     
     watchId = navigator.geolocation.watchPosition(
         pos => {
@@ -606,6 +667,7 @@ document.getElementById("stopBtn").onclick = () => {
     throttleLabel.classList.remove("active");
 
     isEngineRunning = false;
+    if(loopTimeout) clearTimeout(loopTimeout);
     if (keepAliveInterval) clearInterval(keepAliveInterval);
 
     if(masterGain) {
@@ -628,10 +690,8 @@ document.getElementById("stopBtn").onclick = () => {
     document.getElementById("actionBtn").innerText = "BAŞLAT";
 
     setTimeout(() => {
-        if(activeSource) {
-            try { activeSource.stop(); } catch(e){}
-            activeSource = null;
-        }
+        if(sourceA) { try { sourceA.stop(); } catch(e){} sourceA = null; }
+        if(sourceB) { try { sourceB.stop(); } catch(e){} sourceB = null; }
 
         if(watchId !== null) {
             navigator.geolocation.clearWatch(watchId);
