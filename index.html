@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - BMW IconicSounds EV Edition</title>
+<title>VoltSound - Smooth Decay Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -283,7 +283,7 @@ async function loadEngineSound() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         masterGain = audioCtx.createGain();
-        masterGain.gain.value = 0.0; // Başlangıçta mutlak sessizlik
+        masterGain.gain.value = 0.0;
         masterGain.connect(audioCtx.destination);
 
         lowpassFilter = audioCtx.createBiquadFilter();
@@ -322,7 +322,6 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// BMW ICONICSOUNDS: RÖLANTİDE SIFIR SES, HIZLANDIKÇA HACİM VE FREKANS KAZANAN MİMARİ
 function updateEngineAudio(speed) {
     if (!audioCtx || !activeSource) return;
     const now = audioCtx.currentTime;
@@ -333,7 +332,7 @@ function updateEngineAudio(speed) {
     try {
         activeSource.playbackRate.cancelScheduledValues(now);
         activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
-        activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
+        activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.1);
     } catch(e){}
 
     let targetFreq = 500 + (speed * 30);
@@ -341,7 +340,7 @@ function updateEngineAudio(speed) {
     if(lowpassFilter) {
         lowpassFilter.frequency.cancelScheduledValues(now);
         lowpassFilter.frequency.setValueAtTime(lowpassFilter.frequency.value, now);
-        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.05);
+        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.1);
     }
 
     let metallicVolume = 0.0;
@@ -356,19 +355,21 @@ function updateEngineAudio(speed) {
     if(metallicGain && metallicFilter) {
         metallicGain.gain.cancelScheduledValues(now);
         metallicGain.gain.setValueAtTime(metallicGain.gain.value, now);
-        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.08);
+        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.1);
 
         metallicFilter.frequency.cancelScheduledValues(now);
         metallicFilter.frequency.setValueAtTime(metallicFilter.frequency.value, now);
-        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.08);
+        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.1);
     }
 
-    // KRİTİK BMW MİMARİSİ: Hız 0 iken master ses 0 (Mutlak Sessizlik). Hızlandıkça ses yumuşakça açılır.
+    // YAVAŞLARKEN / GAZI ÇEKİNCE SÖNÜMLENEREK KAPANMA (DECAY / FADE-OUT)
     if(masterGain && isEngineRunning) {
         let targetMasterGain = speed > 1 ? Math.min(0.8, 0.15 + (speed / 180)) : 0.0;
+        
         masterGain.gain.cancelScheduledValues(now);
         masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-        masterGain.gain.linearRampToValueAtTime(targetMasterGain, now + 0.1);
+        // Hız düştüğünde sesin aniden değil, 0.4 saniyelik kademeli bir kavisle sönümlenmesini sağlar
+        masterGain.gain.setTargetAtTime(targetMasterGain, now, 0.15);
     }
 }
 
@@ -538,7 +539,7 @@ document.getElementById("stopBtn").onclick = () => {
         try {
             masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
             masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
-            masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+            masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
         } catch(e){}
     }
 
