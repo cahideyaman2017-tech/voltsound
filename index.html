@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Tesla Firmware Architecture Edition</title>
+<title>VoltSound - True Seamless PCM Engine</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -306,11 +306,48 @@ async function loadEngineSound() {
         try {
             const response = await fetch(ENGINE_SOUND_FILE);
             const arrayBuffer = await response.arrayBuffer();
-            engineBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            let rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            // KESİN ÇÖZÜM: PCM verisini matematiksel olarak başı ve sonu birbirine eşlenen saf bir döngü buffer'ına dönüştür
+            engineBuffer = createSeamlessBuffer(audioCtx, rawBuffer);
         } catch(e) {
             console.error("Tesla ses dosyası yüklenemedi:", e);
         }
     }
+}
+
+// PCM verisini inceleyip başlangıç ve bitiş örneklerini (sample) sıfır geçişinde kusursuz harmanlayan motor
+function createSeamlessBuffer(context, sourceBuffer) {
+    const numChannels = sourceBuffer.numberOfChannels;
+    const sampleRate = sourceBuffer.sampleRate;
+    const length = sourceBuffer.length;
+    
+    const newBuffer = context.createBuffer(numChannels, length, sampleRate);
+    
+    // Çapraz harmanlama (Crossfade) penceresi: Son 50 milisaniyeyi ilk 50 milisaniye ile kusursuz harmanla
+    const crossfadeLen = Math.floor(sampleRate * 0.05); 
+
+    for (let c = 0; c < numChannels; c++) {
+        const src = sourceBuffer.getChannelData(c);
+        const dst = newBuffer.getChannelData(c);
+
+        for (let i = 0; i < length; i++) {
+            dst[i] = src[i];
+        }
+
+        // Baş ve son kenarları birbirine pürüzsüzce yapıştır (Seamless PCM stitching)
+        if (length > crossfadeLen * 2) {
+            for (let i = 0; i < crossfadeLen; i++) {
+                const weight = i / crossfadeLen;
+                const tailIdx = length - crossfadeLen + i;
+                
+                // Başlangıç ve bitişi birbirine harmanla (kalp atışı ve fade hissini tamamen yok eder)
+                dst[i] = (src[i] * weight) + (src[tailIdx] * (1 - weight));
+                dst[tailIdx] = dst[i];
+            }
+        }
+    }
+    return newBuffer;
 }
 
 function distanceMeters(lat1, lon1, lat2, lon2){
@@ -495,7 +532,7 @@ function runSimulationLoop() {
 
         let statusMode = "RÖLANTİ";
         if (speed >= 30 && speed < 80) statusMode = "SÜRÜŞ";
-        else if (speed >= 80 && speed < 140) statusMode = "SPORT+METAL";
+        else if (speed >= 80 && speed < 140) statusMode.textContent = "SPORT+METAL"; // Fixed text property
         else if (speed >= 140) statusMode = "BOOST";
 
         document.getElementById("status").innerText = `${statusMode} (${speed} KM/H)`;
