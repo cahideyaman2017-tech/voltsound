@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Magnetic Warp Edition</title>
+<title>VoltSound - Magnetic Reverb Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -296,6 +296,12 @@ let masterGain = null;
 let lowpassFilter = null;
 let magneticFilter = null;
 let magneticGain = null;
+
+// Gecikme ve Yankı Düğümleri
+let delayNode = null;
+let feedbackGain = null;
+let reverbGain = null;
+
 let watchId = null;
 let keepAliveInterval = null;
 
@@ -320,17 +326,35 @@ async function loadEngineSound() {
         lowpassFilter.frequency.value = 600;
         lowpassFilter.connect(masterGain);
 
-        // MANYETİK YAYILMA FİLTRESİ (80 km/s sonrasında genişleyen ve yankılanan tını)
         magneticFilter = audioCtx.createBiquadFilter();
         magneticFilter.type = "bandpass";
         magneticFilter.frequency.value = 2200;
-        magneticFilter.Q.value = 4.0; // Başlangıçta odaklı rezonans
+        magneticFilter.Q.value = 4.0; 
 
         magneticGain = audioCtx.createGain();
         magneticGain.gain.value = 0.0;
 
         magneticFilter.connect(magneticGain);
         magneticGain.connect(masterGain);
+
+        // --- DERİN YANKI ZİNCİRİ (Reverb & Delay) ---
+        // 1. Sesi hafif geciktir (boşluk hissi)
+        delayNode = audioCtx.createDelay(1.0);
+        delayNode.delayTime.value = 0.15; // 150ms gecikme
+        
+        // 2. Geciken sesi kendi içine geri besle (kuyruk oluştur)
+        feedbackGain = audioCtx.createGain();
+        feedbackGain.gain.value = 0.4; // Yankının uzama süresi (Çok açarsak ses patlar, %40 ideal)
+
+        // 3. Yankı sisteminin ana sesi
+        reverbGain = audioCtx.createGain();
+        reverbGain.gain.value = 0.0; // Başlangıçta yankı yok
+
+        // Yankı zincirini bağla
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode); // Kendi içine dönen loop
+        delayNode.connect(reverbGain);
+        reverbGain.connect(masterGain);
     }
 
     if (!engineBuffer) {
@@ -373,17 +397,22 @@ function updateEngineAudio(speed) {
         lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.1);
     }
 
-    // 80 KM/S SONRASI MANYETİK YAYILMA VE DERİNLİK EFEKTİ
     let magneticVolume = 0.0;
     let magneticFreq = 2200;
     let magneticQ = 4.0;
+    let reverbVolume = 0.0;
 
+    // 80 KM/S SONRASI YANKILI MANYETİK YAYILMA
     if (speed > 80) {
         let overSpeed = speed - 80;
-        // Hızlandıkça manyetik hacim katlanarak artar ve etrafa yayılarak yankılanır
+        
+        // Manyetik bant hacmi artar
         magneticVolume = Math.min(0.9, overSpeed / 50); 
         magneticFreq = 2200 + (overSpeed * 55); 
-        magneticQ = Math.max(1.5, 4.0 - (overSpeed * 0.03)); // Q düşer, ses havada yayılır ve genişler
+        magneticQ = Math.max(1.5, 4.0 - (overSpeed * 0.03)); 
+        
+        // YANKI (REVERB) HACMİNİ KADEMELİ AÇ
+        reverbVolume = Math.min(0.6, overSpeed / 60); 
     }
 
     if(magneticGain && magneticFilter) {
@@ -398,6 +427,13 @@ function updateEngineAudio(speed) {
         magneticFilter.Q.cancelScheduledValues(now);
         magneticFilter.Q.setValueAtTime(magneticFilter.Q.value, now);
         magneticFilter.Q.linearRampToValueAtTime(magneticQ, now + 0.1);
+    }
+
+    // Yankı kazancını güncelle
+    if(reverbGain) {
+        reverbGain.gain.cancelScheduledValues(now);
+        reverbGain.gain.setValueAtTime(reverbGain.gain.value, now);
+        reverbGain.gain.linearRampToValueAtTime(reverbVolume, now + 0.15);
     }
 
     if(masterGain && isEngineRunning) {
@@ -432,8 +468,12 @@ function startSolidEngine() {
     activeSource.buffer = engineBuffer;
     activeSource.loop = true;
 
+    // Ana sinyali hem doğrudan hoparlörlere hem de gecikme (yankı) devresine gönder
     activeSource.connect(lowpassFilter);
-    activeSource.connect(magneticFilter); // Manyetik filtre zincire bağlandı
+    activeSource.connect(magneticFilter);
+    if(delayNode) {
+        activeSource.connect(delayNode);
+    }
 
     activeSource.start(now);
 
@@ -567,6 +607,13 @@ document.getElementById("stopBtn").onclick = () => {
             masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
             masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
             masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+        } catch(e){}
+    }
+
+    if(reverbGain) {
+        try {
+            reverbGain.gain.cancelScheduledValues(audioCtx.currentTime);
+            reverbGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
         } catch(e){}
     }
 
