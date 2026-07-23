@@ -123,22 +123,29 @@ button{
 
 button:hover { background: #7dd3fc; box-shadow: 0 0 45px rgba(56, 189, 248, 0.8); transform: scale(1.05); }
 
+/* "X" Butonu Özel Tasarımı */
 button.stop-btn {
     background: rgba(185, 28, 28, 0.25);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(239, 68, 68, 0.4);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37), inset 0 1px 1px rgba(255, 255, 255, 0.2);
     color: #fca5a5;
-    font-size: 14px;
-    padding: 10px 24px;
+    font-size: 18px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin-top: 6px;
 }
 button.stop-btn:hover {
     background: rgba(220, 38, 38, 0.4);
     border-color: rgba(248, 113, 113, 0.7);
-    box-shadow: 0 8px 32px rgba(220, 38, 38, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(220, 38, 38, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.4);
     color: #fff;
-    transform: scale(1.05);
+    transform: scale(1.1);
 }
 
 .throttle-bar {
@@ -198,7 +205,8 @@ button.stop-btn:hover {
         
         <div id="metricPanel" class="panel">
             <div id="status">SİSTEM HAZIR</div>
-            <button id="stopBtn" class="stop-btn">DURDUR</button>
+            <!-- DURDUR yazısı yerine şık bir X butonu -->
+            <button id="stopBtn" class="stop-btn">✕</button>
         </div>
     </div>
 </div>
@@ -214,7 +222,6 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-// Warp Yıldız Sistemi Mimarisi
 const numStars = 400;
 const stars = [];
 
@@ -233,14 +240,12 @@ let throttleValue = 0.0;
 let isDraggingThrottle = false;
 
 function animateWarpStars() {
-    // Hafif iz bırakma (motion blur) hissi için opak siyah dolgu
     ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     
-    // Hız arttıkça yıldızların akış hızı (warp factor) katlanarak artar
     const baseSpeed = 2.0;
     const speedMultiplier = baseSpeed + (currentSpeedForVisual * 0.35);
 
@@ -249,14 +254,12 @@ function animateWarpStars() {
         
         star.z -= speedMultiplier;
 
-        // Yıldız ekranın arkasında kalırsa tekrar derinliğe gönder
         if (star.z <= 0) {
             star.z = canvas.width;
             star.x = (Math.random() - 0.5) * canvas.width * 2;
             star.y = (Math.random() - 0.5) * canvas.height * 2;
         }
 
-        // 3D Perspektif projeksiyonu
         const k = 250 / star.z;
         const px = star.x * k + cx;
         const py = star.y * k + cy;
@@ -264,7 +267,6 @@ function animateWarpStars() {
         if (px >= 0 && px <= canvas.width && py >= 0 && py <= canvas.height) {
             const pSize = Math.max(1, star.size * k * (1 + currentSpeedForVisual * 0.02));
             
-            // Hız yüksekken yıldızlar çizgiye (warp streak) dönüşür
             if (currentSpeedForVisual > 15) {
                 const prevK = 250 / (star.z + speedMultiplier * 1.5);
                 const prevPx = star.x * prevK + cx;
