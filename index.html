@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Metallic Evolution Edition</title>
+<title>VoltSound - Stable Throttle Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -298,7 +298,7 @@ let engineBuffer = null;
 let activeSource = null;
 let activeGain = null;
 let lowpassFilter = null;
-let metallicFilter = null; // 80 km/h sonrası metalik tını (Bandpass)
+let metallicFilter = null;
 let metallicGain = null;
 let watchId = null;
 let loopTimer = null;
@@ -315,20 +315,18 @@ async function loadEngineSound() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // 1. Ana Tok Filtre (0-80 km/h arası sıcak/tok tını için)
         lowpassFilter = audioCtx.createBiquadFilter();
         lowpassFilter.type = "lowpass";
         lowpassFilter.frequency.value = 600;
         lowpassFilter.connect(audioCtx.destination);
 
-        // 2. Metalik Rezonans Filtresi (80 km/h sonrası devreye giren jet/uzay çınlaması)
         metallicFilter = audioCtx.createBiquadFilter();
         metallicFilter.type = "bandpass";
         metallicFilter.frequency.value = 2400;
-        metallicFilter.Q.value = 6.0; // Keskin metalik rezonans
+        metallicFilter.Q.value = 6.0;
 
         metallicGain = audioCtx.createGain();
-        metallicGain.gain.value = 0.0; // Başlangıçta tamamen kapalı
+        metallicGain.gain.value = 0.0;
 
         metallicFilter.connect(metallicGain);
         metallicGain.connect(audioCtx.destination);
@@ -353,37 +351,55 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// 80 KM/H SONRASI METALİK EVRİLME VE PITCH YÖNETİMİ
+// STABILIZE EDİLMİŞ PITCH VE SES KONTROLÜ (Kopma Önleyici)
 function updateEnginePitch(speed) {
     let rate = 0.75 + (speed / 140);
     rate = Math.max(0.75, Math.min(1.85, rate));
 
+    const now = audioCtx.currentTime;
+
     if(activeSource) {
-        activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.08);
+        try {
+            activeSource.playbackRate.cancelScheduledValues(now);
+            activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
+            activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
+        } catch(e){}
     }
 
-    // Tok alt frekans tırmanışı
     let targetFreq = 500 + (speed * 30);
     targetFreq = Math.max(500, Math.min(5000, targetFreq));
-    lowpassFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.08);
+    if(lowpassFilter) {
+        lowpassFilter.frequency.cancelScheduledValues(now);
+        lowpassFilter.frequency.setValueAtTime(lowpassFilter.frequency.value, now);
+        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.05);
+    }
 
-    // 80 KM/H SONRASI METALİK EVRİLME (JET / FORMULA E ÇINLAMASI)
     let metallicVolume = 0.0;
     let metallicFreq = 2400;
 
     if (speed > 80) {
         let overSpeed = speed - 80;
-        metallicVolume = Math.min(0.85, overSpeed / 60); // Hızlandıkça metalik çınlama ağırlığını koyar
-        metallicFreq = 2400 + (overSpeed * 45); // Hızlandıkça uzay gemisi gibi tizleşir
+        metallicVolume = Math.min(0.85, overSpeed / 60); 
+        metallicFreq = 2400 + (overSpeed * 45); 
     }
 
     if(metallicGain && metallicFilter) {
-        metallicGain.gain.setTargetAtTime(metallicVolume, audioCtx.currentTime, 0.1);
-        metallicFilter.frequency.setTargetAtTime(metallicFreq, audioCtx.currentTime, 0.1);
+        metallicGain.gain.cancelScheduledValues(now);
+        metallicGain.gain.setValueAtTime(metallicGain.gain.value, now);
+        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.05);
+
+        metallicFilter.frequency.cancelScheduledValues(now);
+        metallicFilter.frequency.setValueAtTime(metallicFilter.frequency.value, now);
+        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.05);
+    }
+
+    // GÜVENLİK KONTROLÜ: Eğer ses yanlışlıkla 0'a düşer veya takılırsa otomatik kurtar
+    if(activeGain && activeGain.gain.value < 0.05 && isEngineRunning && (speed > 0 || throttleValue > 0)) {
+        activeGain.gain.cancelScheduledValues(now);
+        activeGain.gain.setValueAtTime(1.0, now);
     }
 }
 
-// KESİNTİSİZ ÇİFT KAYNAKLI OTOMATİK CROSSFADE LOOP SİSTEMİ
 function startSeamlessEngine() {
     if(!engineBuffer) return;
     const now = audioCtx.currentTime;
@@ -395,15 +411,13 @@ function startSeamlessEngine() {
     source.buffer = engineBuffer;
 
     const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.0, now);
-    gainNode.gain.linearRampToValueAtTime(1.0, now + crossfadeTime);
+    gainNode.gain.setValueAtTime(1.0, now); // Doğrudan tam ses başlat
 
     let rate = 0.75 + (smoothedSpeed / 140);
     source.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), now);
 
     source.connect(gainNode);
     gainNode.connect(lowpassFilter);
-    // Aynı zamanda kaynağı metalik filtreye de besliyoruz ki 80'den sonra çınlama oradan beslensin
     source.connect(metallicFilter);
 
     source.start(now);
@@ -419,8 +433,7 @@ function startSeamlessEngine() {
         nSource.buffer = engineBuffer;
 
         const nGain = audioCtx.createGain();
-        nGain.gain.setValueAtTime(0.0, nextNow);
-        nGain.gain.linearRampToValueAtTime(1.0, nextNow + crossfadeTime);
+        nGain.gain.setValueAtTime(1.0, nextNow);
         nSource.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), nextNow);
 
         nSource.connect(nGain);
@@ -429,9 +442,11 @@ function startSeamlessEngine() {
         nSource.start(nextNow);
 
         if(activeGain) {
-            activeGain.gain.setValueAtTime(activeGain.gain.value, nextNow);
-            activeGain.gain.linearRampToValueAtTime(0.0, nextNow + crossfadeTime);
-            setTimeout(() => { try { activeSource.stop(); } catch(e){} }, (crossfadeTime + 0.1) * 1000);
+            try {
+                activeGain.gain.setValueAtTime(activeGain.gain.value, nextNow);
+                activeGain.gain.linearRampToValueAtTime(0.0, nextNow + crossfadeTime);
+                setTimeout(() => { try { activeSource.stop(); } catch(e){} }, (crossfadeTime + 0.1) * 1000);
+            } catch(e){}
         }
 
         activeSource = nSource;
@@ -521,7 +536,7 @@ document.getElementById("actionBtn").onclick = async () => {
 function runSimulationLoop() {
     if(isEngineRunning) {
         if(!isDraggingThrottle && throttleValue > 0) {
-            throttleValue -= 0.05;
+            throttleValue -= 0.06;
             if(throttleValue < 0) throttleValue = 0;
             updateThrottlePosition();
         }
@@ -573,13 +588,13 @@ document.getElementById("stopBtn").onclick = () => {
     if(activeGain) {
         try {
             activeGain.gain.setValueAtTime(activeGain.gain.value, audioCtx.currentTime);
-            activeGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+            activeGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
         } catch(e){}
     }
     if(metallicGain) {
         try {
             metallicGain.gain.setValueAtTime(metallicGain.gain.value, audioCtx.currentTime);
-            metallicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+            metallicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
         } catch(e){}
     }
 
