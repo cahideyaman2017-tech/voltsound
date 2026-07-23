@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Native Loop Edition</title>
+<title>VoltSound - Seamless Crossfade Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -297,8 +297,11 @@ let audioCtx = null;
 let engineBuffer = null; 
 let activeSource = null;
 let activeGain = null;
+let nextSource = null;
+let nextGain = null;
 let biquadFilter = null;
 let watchId = null;
+let loopTimer = null;
 
 let lastLat = null;
 let lastLon = null;
@@ -336,44 +339,40 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// 80 KM/H SONRASI "KAVRAYAN" PERFORMANS EĞRİSİ
 function updateEnginePitch(speed) {
-    let rate;
-    let targetFreq;
-
-    if (speed <= 80) {
-        rate = 0.75 + (speed / 160);
-        targetFreq = 500 + (speed * 25);
-    } else {
-        let overSpeed = speed - 80;
-        rate = 1.25 + (overSpeed / 90); 
-        targetFreq = 2500 + (overSpeed * 45); 
-    }
-
-    rate = Math.max(0.75, Math.min(2.1, rate));
-    targetFreq = Math.max(500, Math.min(7500, targetFreq));
+    let rate = 0.75 + (speed / 140);
+    rate = Math.max(0.75, Math.min(1.85, rate));
 
     if(activeSource) {
         activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.08);
     }
+    if(nextSource) {
+        nextSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.08);
+    }
+
+    let targetFreq = 500 + (speed * 35);
+    targetFreq = Math.max(500, Math.min(6000, targetFreq));
     biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.08);
 }
 
-// TEK VE KESİNTİSİZ NATIVE LOOP BAŞLATICI
-function startNativeEngine() {
+// KESİNTİSİZ ÇİFT KAYNAKLI OTOMATİK CROSSFADE LOOP SİSTEMİ
+function startSeamlessEngine() {
     if(!engineBuffer) return;
     const now = audioCtx.currentTime;
+    const duration = engineBuffer.duration;
+    // Dosya bitimine 0.3 saniye kala diğer sesi devreye sokup çapraz harmanlıyoruz ("ding" sesini tamamen yok eder)
+    const crossfadeTime = 0.3; 
+    const scheduleTime = Math.max(0.5, duration - crossfadeTime);
 
     const source = audioCtx.createBufferSource();
     source.buffer = engineBuffer;
-    source.loop = true; // Tarayıcının kendi donanımsal loop mekanizması (Asla kopmaz)
 
     const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.01, now);
-    gainNode.gain.linearRampToValueAtTime(1.0, now + 0.3);
+    gainNode.gain.setValueAtTime(0.0, now);
+    gainNode.gain.linearRampToValueAtTime(1.0, now + crossfadeTime);
 
-    let rate = 0.75;
-    source.playbackRate.setValueAtTime(rate, now);
+    let rate = 0.75 + (smoothedSpeed / 140);
+    source.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), now);
 
     source.connect(gainNode);
     gainNode.connect(biquadFilter);
@@ -381,6 +380,39 @@ function startNativeEngine() {
 
     activeSource = source;
     activeGain = gainNode;
+
+    // Sonraki döngüyü zamanla
+    loopTimer = setTimeout(() => {
+        if(!isEngineRunning) return;
+        
+        // Yeni döngü kaynağını başlat
+        const nextNow = audioCtx.currentTime;
+        const nSource = audioCtx.createBufferSource();
+        nSource.buffer = engineBuffer;
+
+        const nGain = audioCtx.createGain();
+        nGain.gain.setValueAtTime(0.0, nextNow);
+        nGain.gain.linearRampToValueAtTime(1.0, nextNow + crossfadeTime);
+        nSource.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), nextNow);
+
+        nSource.connect(nGain);
+        nGain.connect(biquadFilter);
+        nSource.start(nextNow);
+
+        // Eski kaynağı yavaşça kıs
+        if(activeGain) {
+            activeGain.gain.setValueAtTime(activeGain.gain.value, nextNow);
+            activeGain.gain.linearRampToValueAtTime(0.0, nextNow + crossfadeTime);
+            setTimeout(() => { try { activeSource.stop(); } catch(e){} }, (crossfadeTime + 0.1) * 1000);
+        }
+
+        activeSource = nSource;
+        activeGain = nGain;
+
+        // Döngüyü tekrar tetikle
+        startSeamlessEngine();
+
+    }, scheduleTime * 1000 / (rate > 0 ? rate : 1));
 }
 
 const throttleBar = document.getElementById("throttleBar");
@@ -427,7 +459,7 @@ document.getElementById("actionBtn").onclick = async () => {
     }
 
     isEngineRunning = true;
-    startNativeEngine();
+    startSeamlessEngine();
     
     waveScaleFactor = 0.0;
     const growInterval = setInterval(() => {
@@ -505,6 +537,11 @@ document.getElementById("stopBtn").onclick = () => {
     updateThrottlePosition();
     throttleBar.classList.remove("active");
     throttleLabel.classList.remove("active");
+
+    if(loopTimer) {
+        clearTimeout(loopTimer);
+        loopTimer = null;
+    }
 
     if(activeGain) {
         try {
