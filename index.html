@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Pro Seamless Crossfade Edition</title>
+<title>VoltSound - Chain-Loop Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -296,12 +296,10 @@ animateWaves();
 let audioCtx = null;
 let engineBuffer = null; 
 let activeSource = null;
-let activeGain = null;
 let lowpassFilter = null;
 let metallicFilter = null;
 let metallicGain = null;
 let watchId = null;
-let crossfadeTimeout = null;
 
 let lastLat = null;
 let lastLon = null;
@@ -389,78 +387,28 @@ function updateEnginePitch(speed) {
     }
 }
 
-// GÜVENLİ VE HATASIZ CROSSFADE DÖNGÜSÜ
-function scheduleSeamlessLoop() {
+// ZİNCİRLEME KUSURSUZ LOOP (Boşlukları tamamen yok eder)
+function playNextSegment() {
     if (!isEngineRunning || !engineBuffer) return;
-
-    const duration = engineBuffer.duration;
-    const crossfadeDuration = 0.3; 
-    const currentRate = (activeSource && activeSource.playbackRate.value > 0) ? activeSource.playbackRate.value : 1.0;
-    
-    // Güvenli zamanlama hesaplaması
-    const triggerTime = Math.max(0.2, (duration - crossfadeDuration) / currentRate) * 1000;
-
-    crossfadeTimeout = setTimeout(() => {
-        if (!isEngineRunning || !engineBuffer) return;
-
-        const now = audioCtx.currentTime;
-        const nextSource = audioCtx.createBufferSource();
-        nextSource.buffer = engineBuffer;
-
-        const nextGain = audioCtx.createGain();
-        nextGain.gain.setValueAtTime(0.0, now);
-        nextGain.gain.linearRampToValueAtTime(1.0, now + crossfadeDuration);
-
-        nextSource.playbackRate.setValueAtTime(currentRate, now);
-
-        nextSource.connect(nextGain);
-        nextGain.connect(lowpassFilter);
-        nextSource.connect(metallicFilter);
-        nextSource.start(now);
-
-        if (activeGain) {
-            try {
-                activeGain.gain.setValueAtTime(activeGain.gain.value, now);
-                activeGain.gain.linearRampToValueAtTime(0.0, now + crossfadeDuration);
-            } catch(e){}
-            
-            const oldSource = activeSource;
-            setTimeout(() => {
-                try { oldSource.stop(); } catch(e){}
-            }, (crossfadeDuration + 0.1) * 1000);
-        }
-
-        activeSource = nextSource;
-        activeGain = nextGain;
-
-        scheduleSeamlessLoop();
-
-    }, triggerTime);
-}
-
-function startEngine() {
-    if(!engineBuffer) return;
-    const now = audioCtx.currentTime;
 
     const source = audioCtx.createBufferSource();
     source.buffer = engineBuffer;
 
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.01, now);
-    gainNode.gain.linearRampToValueAtTime(1.0, now + 0.3);
+    let currentRate = (activeSource && activeSource.playbackRate.value > 0) ? activeSource.playbackRate.value : 0.75;
+    source.playbackRate.setValueAtTime(currentRate, audioCtx.currentTime);
 
-    source.playbackRate.setValueAtTime(0.75, now);
-
-    source.connect(gainNode);
-    gainNode.connect(lowpassFilter);
+    source.connect(lowpassFilter);
     source.connect(metallicFilter);
 
-    source.start(now);
+    // Ses bittiği an bir sonraki parçayı milisaniyelik boşluk bırakmadan tetikle
+    source.onended = () => {
+        if (isEngineRunning) {
+            playNextSegment();
+        }
+    };
 
+    source.start(audioCtx.currentTime);
     activeSource = source;
-    activeGain = gainNode;
-
-    scheduleSeamlessLoop();
 }
 
 const throttleBar = document.getElementById("throttleBar");
@@ -507,7 +455,7 @@ document.getElementById("actionBtn").onclick = async () => {
     }
 
     isEngineRunning = true;
-    startEngine();
+    playNextSegment();
     
     waveScaleFactor = 0.0;
     const growInterval = setInterval(() => {
@@ -587,20 +535,6 @@ document.getElementById("stopBtn").onclick = () => {
     throttleLabel.classList.remove("active");
 
     isEngineRunning = false;
-    if(crossfadeTimeout) clearTimeout(crossfadeTimeout);
-
-    if(activeGain) {
-        try {
-            activeGain.gain.setValueAtTime(activeGain.gain.value, audioCtx.currentTime);
-            activeGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
-        } catch(e){}
-    }
-    if(metallicGain) {
-        try {
-            metallicGain.gain.setValueAtTime(metallicGain.gain.value, audioCtx.currentTime);
-            metallicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
-        } catch(e){}
-    }
 
     document.getElementById("metricPanel").classList.remove("zoom-in");
     document.getElementById("startPanel").classList.remove("zoom-out");
