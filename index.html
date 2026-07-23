@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Magnetic Reverb Edition</title>
+<title>VoltSound - Glass Reflection Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -50,7 +50,11 @@ canvas {
     border: 1px solid rgba(56, 189, 248, 0.3);
     padding: 40px 60px;
     border-radius: 32px;
-    box-shadow: 0 0 50px rgba(56, 189, 248, 0.15);
+    /* Cam panelin alt zemine vuran hafif ayna yansıması ve derinlik gölgesi */
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 
+                0 0 50px rgba(56, 189, 248, 0.15),
+                inset 0 1px 1px rgba(255, 255, 255, 0.2), 
+                inset 0 -15px 20px rgba(56, 189, 248, 0.05);
     backdrop-filter: blur(16px);
     z-index: 2;
     position: relative;
@@ -63,6 +67,24 @@ canvas {
     overflow: hidden;
 }
 
+/* Camın üst yüzeyindeki hafif parlama (Ayna Efekti Detayı) */
+.container::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.07) 0%,
+        rgba(255, 255, 255, 0.0) 50%,
+        rgba(56, 189, 248, 0.03) 100%
+    );
+    pointer-events: none;
+    transform: rotate(25deg);
+}
+
 .slider-wrapper {
     position: relative;
     width: 100%;
@@ -70,6 +92,7 @@ canvas {
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 3;
 }
 
 .panel {
