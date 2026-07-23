@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Stable Throttle Edition</title>
+<title>VoltSound - Master Performance Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -296,12 +296,11 @@ animateWaves();
 let audioCtx = null;
 let engineBuffer = null; 
 let activeSource = null;
-let activeGain = null;
+let masterGain = null;
 let lowpassFilter = null;
 let metallicFilter = null;
 let metallicGain = null;
 let watchId = null;
-let loopTimer = null;
 
 let lastLat = null;
 let lastLon = null;
@@ -315,11 +314,18 @@ async function loadEngineSound() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
+        // Master Gain (Tüm ses çıkışını tek elden pürüzsüz yöneten düğüm)
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.0;
+        masterGain.connect(audioCtx.destination);
+
+        // 1. Ana Tok Filtre (0-80 km/h arası)
         lowpassFilter = audioCtx.createBiquadFilter();
         lowpassFilter.type = "lowpass";
         lowpassFilter.frequency.value = 600;
-        lowpassFilter.connect(audioCtx.destination);
+        lowpassFilter.connect(masterGain);
 
+        // 2. Metalik Rezonans Filtresi (80 km/h sonrası jet çınlaması)
         metallicFilter = audioCtx.createBiquadFilter();
         metallicFilter.type = "bandpass";
         metallicFilter.frequency.value = 2400;
@@ -329,18 +335,39 @@ async function loadEngineSound() {
         metallicGain.gain.value = 0.0;
 
         metallicFilter.connect(metallicGain);
-        metallicGain.connect(audioCtx.destination);
+        metallicGain.connect(masterGain);
     }
 
     if (!engineBuffer) {
         try {
             const response = await fetch(ENGINE_SOUND_FILE);
             const arrayBuffer = await response.arrayBuffer();
-            engineBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            let rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            engineBuffer = applyFadeToBuffer(audioCtx, rawBuffer, 0.04); // Çıtırtı önleyici mini fade
         } catch(e) {
             console.error("Tesla ses dosyası yüklenemedi:", e);
         }
     }
+}
+
+// Ses tamponunun başını ve sonunu mikro düzeyde yumuşatan fonksiyon
+function applyFadeToBuffer(context, audioBuffer, fadeDuration) {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const fadeSamples = Math.floor(sampleRate * fadeDuration);
+
+    for (let c = 0; c < numChannels; c++) {
+        const channelData = audioBuffer.getChannelData(c);
+        const len = channelData.length;
+        for (let i = 0; i < fadeSamples && i < len; i++) {
+            channelData[i] *= (i / fadeSamples);
+        }
+        for (let i = 0; i < fadeSamples && i < len; i++) {
+            const idx = len - 1 - i;
+            channelData[idx] *= (i / fadeSamples);
+        }
+    }
+    return audioBuffer;
 }
 
 function distanceMeters(lat1, lon1, lat2, lon2){
@@ -351,29 +378,29 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// STABILIZE EDİLMİŞ PITCH VE SES KONTROLÜ (Kopma Önleyici)
-function updateEnginePitch(speed) {
+// KARARLI PITCH, FİLTRE VE SES KONTROLÜ (Kopma/Kesilme Sıfırlandı)
+function updateEngineAudio(speed, throttle) {
+    if (!audioCtx || !activeSource) return;
+    const now = audioCtx.currentTime;
+
+    // Pitch (Perde) hesaplaması
     let rate = 0.75 + (speed / 140);
     rate = Math.max(0.75, Math.min(1.85, rate));
 
-    const now = audioCtx.currentTime;
+    try {
+        activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
+        activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.08);
+    } catch(e){}
 
-    if(activeSource) {
-        try {
-            activeSource.playbackRate.cancelScheduledValues(now);
-            activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
-            activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
-        } catch(e){}
-    }
-
+    // Tok alt filtre frekansı
     let targetFreq = 500 + (speed * 30);
     targetFreq = Math.max(500, Math.min(5000, targetFreq));
     if(lowpassFilter) {
-        lowpassFilter.frequency.cancelScheduledValues(now);
         lowpassFilter.frequency.setValueAtTime(lowpassFilter.frequency.value, now);
-        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.05);
+        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.08);
     }
 
+    // 80 KM/H Sonrası Metalik Çınlama
     let metallicVolume = 0.0;
     let metallicFreq = 2400;
 
@@ -384,77 +411,40 @@ function updateEnginePitch(speed) {
     }
 
     if(metallicGain && metallicFilter) {
-        metallicGain.gain.cancelScheduledValues(now);
         metallicGain.gain.setValueAtTime(metallicGain.gain.value, now);
-        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.05);
+        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.08);
 
-        metallicFilter.frequency.cancelScheduledValues(now);
         metallicFilter.frequency.setValueAtTime(metallicFilter.frequency.value, now);
-        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.05);
+        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.08);
     }
 
-    // GÜVENLİK KONTROLÜ: Eğer ses yanlışlıkla 0'a düşer veya takılırsa otomatik kurtar
-    if(activeGain && activeGain.gain.value < 0.05 && isEngineRunning && (speed > 0 || throttleValue > 0)) {
-        activeGain.gain.cancelScheduledValues(now);
-        activeGain.gain.setValueAtTime(1.0, now);
+    // Master Volume (Gaz kesildiğinde bıçak gibi kesilmez, pürüzsüzce fade out olur)
+    let targetVolume = (isEngineRunning && (speed > 1 || throttle > 0.01)) ? 1.0 : 0.0;
+    if(masterGain) {
+        masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+        masterGain.gain.linearRampToValueAtTime(targetVolume, now + 0.12);
     }
 }
 
-function startSeamlessEngine() {
-    if(!engineBuffer) return;
+// TEK VE ASLA KOPMAYAN NATIVE LOOP BAŞLATICI
+function startEngineSource() {
+    if(!engineBuffer || activeSource) return;
     const now = audioCtx.currentTime;
-    const duration = engineBuffer.duration;
-    const crossfadeTime = 0.3; 
-    const scheduleTime = Math.max(0.5, duration - crossfadeTime);
 
     const source = audioCtx.createBufferSource();
     source.buffer = engineBuffer;
+    source.loop = true; // Tarayıcının kendi donanımsal sonsuz döngüsü
 
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(1.0, now); // Doğrudan tam ses başlat
-
-    let rate = 0.75 + (smoothedSpeed / 140);
-    source.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), now);
-
-    source.connect(gainNode);
-    gainNode.connect(lowpassFilter);
+    source.connect(lowpassFilter);
     source.connect(metallicFilter);
 
     source.start(now);
-
     activeSource = source;
-    activeGain = gainNode;
 
-    loopTimer = setTimeout(() => {
-        if(!isEngineRunning) return;
-        
-        const nextNow = audioCtx.currentTime;
-        const nSource = audioCtx.createBufferSource();
-        nSource.buffer = engineBuffer;
-
-        const nGain = audioCtx.createGain();
-        nGain.gain.setValueAtTime(1.0, nextNow);
-        nSource.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), nextNow);
-
-        nSource.connect(nGain);
-        nGain.connect(lowpassFilter);
-        nSource.connect(metallicFilter);
-        nSource.start(nextNow);
-
-        if(activeGain) {
-            try {
-                activeGain.gain.setValueAtTime(activeGain.gain.value, nextNow);
-                activeGain.gain.linearRampToValueAtTime(0.0, nextNow + crossfadeTime);
-                setTimeout(() => { try { activeSource.stop(); } catch(e){} }, (crossfadeTime + 0.1) * 1000);
-            } catch(e){}
-        }
-
-        activeSource = nSource;
-        activeGain = nGain;
-
-        startSeamlessEngine();
-
-    }, scheduleTime * 1000 / (rate > 0 ? rate : 1));
+    if(masterGain) {
+        masterGain.gain.setValueAtTime(0.01, now);
+        masterGain.gain.linearRampToValueAtTime(1.0, now + 0.4);
+    }
 }
 
 const throttleBar = document.getElementById("throttleBar");
@@ -501,7 +491,7 @@ document.getElementById("actionBtn").onclick = async () => {
     }
 
     isEngineRunning = true;
-    startSeamlessEngine();
+    startEngineSource();
     
     waveScaleFactor = 0.0;
     const growInterval = setInterval(() => {
@@ -536,7 +526,7 @@ document.getElementById("actionBtn").onclick = async () => {
 function runSimulationLoop() {
     if(isEngineRunning) {
         if(!isDraggingThrottle && throttleValue > 0) {
-            throttleValue -= 0.06;
+            throttleValue -= 0.06; // Bırakınca akıcı ve hızlı sönümlenme
             if(throttleValue < 0) throttleValue = 0;
             updateThrottlePosition();
         }
@@ -559,7 +549,7 @@ function runSimulationLoop() {
         const speed = Math.max(0, Math.round(smoothedSpeed));
         currentSpeedForVisual = speed;
 
-        updateEnginePitch(speed);
+        updateEngineAudio(speed, throttleValue);
 
         let statusMode = "RÖLANTİ";
         if (speed >= 30 && speed < 80) statusMode = "SÜRÜŞ";
@@ -580,21 +570,10 @@ document.getElementById("stopBtn").onclick = () => {
     throttleBar.classList.remove("active");
     throttleLabel.classList.remove("active");
 
-    if(loopTimer) {
-        clearTimeout(loopTimer);
-        loopTimer = null;
-    }
-
-    if(activeGain) {
+    if(masterGain) {
         try {
-            activeGain.gain.setValueAtTime(activeGain.gain.value, audioCtx.currentTime);
-            activeGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
-        } catch(e){}
-    }
-    if(metallicGain) {
-        try {
-            metallicGain.gain.setValueAtTime(metallicGain.gain.value, audioCtx.currentTime);
-            metallicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+            masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+            masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
         } catch(e){}
     }
 
@@ -615,7 +594,6 @@ document.getElementById("stopBtn").onclick = () => {
             try { activeSource.stop(); } catch(e){}
             activeSource = null;
         }
-        activeGain = null;
 
         if(watchId !== null) {
             navigator.geolocation.clearWatch(watchId);
