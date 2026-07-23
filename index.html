@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Bulletproof Keep-Alive Edition</title>
+<title>VoltSound - BMW IconicSounds EV Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -283,7 +283,7 @@ async function loadEngineSound() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         masterGain = audioCtx.createGain();
-        masterGain.gain.value = 0.0;
+        masterGain.gain.value = 0.0; // Başlangıçta mutlak sessizlik
         masterGain.connect(audioCtx.destination);
 
         lowpassFilter = audioCtx.createBiquadFilter();
@@ -322,6 +322,7 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+// BMW ICONICSOUNDS: RÖLANTİDE SIFIR SES, HIZLANDIKÇA HACİM VE FREKANS KAZANAN MİMARİ
 function updateEngineAudio(speed) {
     if (!audioCtx || !activeSource) return;
     const now = audioCtx.currentTime;
@@ -362,17 +363,17 @@ function updateEngineAudio(speed) {
         metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.08);
     }
 
+    // KRİTİK BMW MİMARİSİ: Hız 0 iken master ses 0 (Mutlak Sessizlik). Hızlandıkça ses yumuşakça açılır.
     if(masterGain && isEngineRunning) {
+        let targetMasterGain = speed > 1 ? Math.min(0.8, 0.15 + (speed / 180)) : 0.0;
         masterGain.gain.cancelScheduledValues(now);
         masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-        masterGain.gain.linearRampToValueAtTime(1.0, now + 0.05);
+        masterGain.gain.linearRampToValueAtTime(targetMasterGain, now + 0.1);
     }
 }
 
-// AUDIO CONTEXT UYUTMA KARŞITI KEEP-ALIVE MEKANİZMASI
 function startKeepAlivePulse() {
     if (keepAliveInterval) clearInterval(keepAliveInterval);
-    // Her 3 saniyede bir AudioContext durumunu kontrol edip gerekirse uyandırır
     keepAliveInterval = setInterval(() => {
         if (audioCtx && audioCtx.state === 'suspended' && isEngineRunning) {
             audioCtx.resume();
@@ -380,7 +381,6 @@ function startKeepAlivePulse() {
     }, 3000);
 }
 
-// Sekme durum değişikliklerini dinle (Kullanıcı başka sekme geçip geri geldiğinde sesi tazeler)
 document.addEventListener("visibilitychange", () => {
     if (!document.hidden && audioCtx && audioCtx.state === 'suspended' && isEngineRunning) {
         audioCtx.resume();
@@ -403,7 +403,6 @@ function startSolidEngine() {
     if(masterGain) {
         masterGain.gain.cancelScheduledValues(now);
         masterGain.gain.setValueAtTime(0.0, now);
-        masterGain.gain.linearRampToValueAtTime(1.0, now + 0.3);
     }
 
     startKeepAlivePulse();
@@ -513,8 +512,8 @@ function runSimulationLoop() {
 
         updateEngineAudio(speed);
 
-        let statusMode = "RÖLANTİ";
-        if (speed >= 30 && speed < 80) statusMode = "SÜRÜŞ";
+        let statusMode = "RÖLANTİ (SESSİZ)";
+        if (speed >= 1 && speed < 80) statusMode = "SÜRÜŞ";
         else if (speed >= 80 && speed < 140) statusMode = "SPORT+METAL";
         else if (speed >= 140) statusMode = "BOOST";
 
