@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Infinite Safe Loop Edition</title>
+<title>VoltSound - Bulletproof Keep-Alive Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -262,16 +262,13 @@ animateWaves();
 
 let audioCtx = null;
 let engineBuffer = null; 
+let activeSource = null;
+let masterGain = null;
 let lowpassFilter = null;
 let metallicFilter = null;
 let metallicGain = null;
 let watchId = null;
-
-// Sabit çalarken sesin aniden gitmesinin sebebi: Zamanlayıcıların (setTimeout) üst üste binmesi veya hafıza (garbage collection) çakışmasıdır.
-// ÇÖZÜM: Zamanlayıcıları tamamen çöpe atıyoruz. Tarayıcının %100 kusursuz, hatasız donanımsal loop (source.loop = true) mekanizmasına 
-// kusursuz bir ana buffer (AudioBufferSourceNode) ve kesintisiz master gain mimarisiyle dönüyoruz. Tek bir nesne sonsuza kadar döner, asla kopmaz.
-let activeSource = null;
-let masterGain = null;
+let keepAliveInterval = null;
 
 let lastLat = null;
 let lastLon = null;
@@ -372,14 +369,31 @@ function updateEngineAudio(speed) {
     }
 }
 
-// TEK VE ASLA KOPMAYAN DONANIMSAL LOOP MİMARİSİ (Zamanlayıcı çökmesi yok!)
+// AUDIO CONTEXT UYUTMA KARŞITI KEEP-ALIVE MEKANİZMASI
+function startKeepAlivePulse() {
+    if (keepAliveInterval) clearInterval(keepAliveInterval);
+    // Her 3 saniyede bir AudioContext durumunu kontrol edip gerekirse uyandırır
+    keepAliveInterval = setInterval(() => {
+        if (audioCtx && audioCtx.state === 'suspended' && isEngineRunning) {
+            audioCtx.resume();
+        }
+    }, 3000);
+}
+
+// Sekme durum değişikliklerini dinle (Kullanıcı başka sekme geçip geri geldiğinde sesi tazeler)
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && audioCtx && audioCtx.state === 'suspended' && isEngineRunning) {
+        audioCtx.resume();
+    }
+});
+
 function startSolidEngine() {
     if (!engineBuffer || activeSource) return;
     const now = audioCtx.currentTime;
 
     activeSource = audioCtx.createBufferSource();
     activeSource.buffer = engineBuffer;
-    activeSource.loop = true; // Tarayıcının donanımsal sonsuz döngüsü
+    activeSource.loop = true;
 
     activeSource.connect(lowpassFilter);
     activeSource.connect(metallicFilter);
@@ -391,6 +405,8 @@ function startSolidEngine() {
         masterGain.gain.setValueAtTime(0.0, now);
         masterGain.gain.linearRampToValueAtTime(1.0, now + 0.3);
     }
+
+    startKeepAlivePulse();
 }
 
 const throttleBar = document.getElementById("throttleBar");
@@ -516,6 +532,9 @@ document.getElementById("stopBtn").onclick = () => {
     throttleBar.classList.remove("active");
     throttleLabel.classList.remove("active");
 
+    isEngineRunning = false;
+    if (keepAliveInterval) clearInterval(keepAliveInterval);
+
     if(masterGain) {
         try {
             masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
@@ -553,7 +572,6 @@ document.getElementById("stopBtn").onclick = () => {
         gpsSpeed = 0;
         smoothedSpeed = 0;
         currentSpeedForVisual = 0;
-        isEngineRunning = false;
 
         document.getElementById("status").innerText = "SİSTEM HAZIR";
     }, 550);
