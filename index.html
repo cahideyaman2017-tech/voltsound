@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Tesla Touch Throttle Edition</title>
+<title>VoltSound - Seamless Crossfade Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -179,7 +179,7 @@ button.stop-btn:hover {
     transform: scale(1.05);
 }
 
-/* SAĞ KENAR: Dokunmatik Gaz Pedalı / Throttle Bar */
+/* SAĞ KENAR: Dokunmatik Gaz Pedalı */
 .throttle-bar {
     position: fixed;
     right: 30px;
@@ -223,7 +223,6 @@ button.stop-btn:hover {
 <canvas id="waveCanvas"></canvas>
 <div class="aurora-glow"></div>
 
-<!-- Sağ Kenar Gaz Pedalı Arayüzü -->
 <div id="throttleLabel" class="throttle-label">GAZ</div>
 <div id="throttleBar" class="throttle-bar">
     <div id="throttleFill" class="throttle-fill"></div>
@@ -298,8 +297,11 @@ let audioCtx = null;
 let engineBuffer = null; 
 let activeSource = null;
 let activeGain = null;
+let nextSource = null;
+let nextGain = null;
 let biquadFilter = null;
 let watchId = null;
+let loopTimer = null;
 
 let lastLat = null;
 let lastLon = null;
@@ -338,19 +340,81 @@ function distanceMeters(lat1, lon1, lat2, lon2){
 }
 
 function updateEnginePitch(speed) {
-    if(!activeSource) return;
-
     let rate = 0.75 + (speed / 140);
     rate = Math.max(0.75, Math.min(1.85, rate));
 
-    activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.08);
+    if(activeSource) {
+        activeSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.08);
+    }
+    if(nextSource) {
+        nextSource.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.08);
+    }
 
     let targetFreq = 500 + (speed * 35);
     targetFreq = Math.max(500, Math.min(6000, targetFreq));
     biquadFilter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.08);
 }
 
-// GAZ KONTROLÜ (THROTTLE MANTIĞI)
+// KESİNTİSİZ ÇİFT KAYNAKLI OTOMATİK CROSSFADE LOOP SİSTEMİ
+function startSeamlessEngine() {
+    if(!engineBuffer) return;
+    const now = audioCtx.currentTime;
+    const duration = engineBuffer.duration;
+    // Dosya bitimine 0.3 saniye kala diğer sesi devreye sokup çapraz harmanlıyoruz ("ding" sesini tamamen yok eder)
+    const crossfadeTime = 0.3; 
+    const scheduleTime = Math.max(0.5, duration - crossfadeTime);
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = engineBuffer;
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.0, now);
+    gainNode.gain.linearRampToValueAtTime(1.0, now + crossfadeTime);
+
+    let rate = 0.75 + (smoothedSpeed / 140);
+    source.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), now);
+
+    source.connect(gainNode);
+    gainNode.connect(biquadFilter);
+    source.start(now);
+
+    activeSource = source;
+    activeGain = gainNode;
+
+    // Sonraki döngüyü zamanla
+    loopTimer = setTimeout(() => {
+        if(!isEngineRunning) return;
+        
+        // Yeni döngü kaynağını başlat
+        const nextNow = audioCtx.currentTime;
+        const nSource = audioCtx.createBufferSource();
+        nSource.buffer = engineBuffer;
+
+        const nGain = audioCtx.createGain();
+        nGain.gain.setValueAtTime(0.0, nextNow);
+        nGain.gain.linearRampToValueAtTime(1.0, nextNow + crossfadeTime);
+        nSource.playbackRate.setValueAtTime(Math.max(0.75, Math.min(1.85, rate)), nextNow);
+
+        nSource.connect(nGain);
+        nGain.connect(biquadFilter);
+        nSource.start(nextNow);
+
+        // Eski kaynağı yavaşça kıs
+        if(activeGain) {
+            activeGain.gain.setValueAtTime(activeGain.gain.value, nextNow);
+            activeGain.gain.linearRampToValueAtTime(0.0, nextNow + crossfadeTime);
+            setTimeout(() => { try { activeSource.stop(); } catch(e){} }, (crossfadeTime + 0.1) * 1000);
+        }
+
+        activeSource = nSource;
+        activeGain = nGain;
+
+        // Döngüyü tekrar tetikle
+        startSeamlessEngine();
+
+    }, scheduleTime * 1000 / (rate > 0 ? rate : 1));
+}
+
 const throttleBar = document.getElementById("throttleBar");
 const throttleFill = document.getElementById("throttleFill");
 const throttleThumb = document.getElementById("throttleThumb");
@@ -394,23 +458,9 @@ document.getElementById("actionBtn").onclick = async () => {
         await audioCtx.resume();
     }
 
-    const now = audioCtx.currentTime;
-    const source = audioCtx.createBufferSource();
-    source.buffer = engineBuffer;
-    source.loop = true;
-
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.01, now);
-    gainNode.gain.linearRampToValueAtTime(1.0, now + 0.5);
-
-    source.connect(gainNode);
-    gainNode.connect(biquadFilter);
-    source.start(now);
-
-    activeSource = source;
-    activeGain = gainNode;
-    
     isEngineRunning = true;
+    startSeamlessEngine();
+    
     waveScaleFactor = 0.0;
     const growInterval = setInterval(() => {
         waveScaleFactor += 0.05;
@@ -441,28 +491,25 @@ document.getElementById("actionBtn").onclick = async () => {
     );
 };
 
-// SİMÜLASYON DÖNGÜSÜ (GAZ KESME VE PITCH SENKRONİZASYONU)
 function runSimulationLoop() {
     if(isEngineRunning) {
-        // Parmağını çekince gaz otomatik kesilir
         if(!isDraggingThrottle && throttleValue > 0) {
-            throttleValue -= 0.05; // Bırakınca bıçak gibi kesilme
+            throttleValue -= 0.05;
             if(throttleValue < 0) throttleValue = 0;
             updateThrottlePosition();
         }
 
-        // Eğer sağdan gaz veriliyorsa gaz önceliklidir (Mac testi için), yoksa GPS hızı devreye girer
         let targetSpeed = 0;
         if (throttleValue > 0 || isDraggingThrottle) {
-            targetSpeed = throttleValue * 200; // Tam gaz 200 KM/H
+            targetSpeed = throttleValue * 200;
         } else {
             targetSpeed = gpsSpeed;
         }
 
         if (targetSpeed < smoothedSpeed) {
-            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.45; // Gaz kesince ani düşüş
+            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.45; 
         } else {
-            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.25; // Hızlanma
+            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.25; 
         }
 
         if(targetSpeed < 2 && throttleValue === 0) smoothedSpeed = 0;
@@ -477,7 +524,6 @@ function runSimulationLoop() {
         else if (speed >= 80 && speed < 140) statusMode = "SPORT";
         else if (speed >= 140) statusMode = "BOOST";
 
-        const sourceTag = (throttleValue > 0 || isDraggingThrottle) ? "DEMO GAZ" : "GPS";
         document.getElementById("status").innerText = `${statusMode} (${speed} KM/H)`;
     }
     requestAnimationFrame(runSimulationLoop);
@@ -491,6 +537,11 @@ document.getElementById("stopBtn").onclick = () => {
     updateThrottlePosition();
     throttleBar.classList.remove("active");
     throttleLabel.classList.remove("active");
+
+    if(loopTimer) {
+        clearTimeout(loopTimer);
+        loopTimer = null;
+    }
 
     if(activeGain) {
         try {
