@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Warp Speed Starfield Edition</title>
+<title>VoltSound - Magnetic Warp Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -123,7 +123,6 @@ button{
 
 button:hover { background: #7dd3fc; box-shadow: 0 0 45px rgba(56, 189, 248, 0.8); transform: scale(1.05); }
 
-/* "X" Butonu Özel Tasarımı */
 button.stop-btn {
     background: rgba(185, 28, 28, 0.25);
     backdrop-filter: blur(12px);
@@ -205,7 +204,6 @@ button.stop-btn:hover {
         
         <div id="metricPanel" class="panel">
             <div id="status">SİSTEM HAZIR</div>
-            <!-- DURDUR yazısı yerine şık bir X butonu -->
             <button id="stopBtn" class="stop-btn">✕</button>
         </div>
     </div>
@@ -296,8 +294,8 @@ let engineBuffer = null;
 let activeSource = null;
 let masterGain = null;
 let lowpassFilter = null;
-let metallicFilter = null;
-let metallicGain = null;
+let magneticFilter = null;
+let magneticGain = null;
 let watchId = null;
 let keepAliveInterval = null;
 
@@ -322,16 +320,17 @@ async function loadEngineSound() {
         lowpassFilter.frequency.value = 600;
         lowpassFilter.connect(masterGain);
 
-        metallicFilter = audioCtx.createBiquadFilter();
-        metallicFilter.type = "bandpass";
-        metallicFilter.frequency.value = 2400;
-        metallicFilter.Q.value = 6.0;
+        // MANYETİK YAYILMA FİLTRESİ (80 km/s sonrasında genişleyen ve yankılanan tını)
+        magneticFilter = audioCtx.createBiquadFilter();
+        magneticFilter.type = "bandpass";
+        magneticFilter.frequency.value = 2200;
+        magneticFilter.Q.value = 4.0; // Başlangıçta odaklı rezonans
 
-        metallicGain = audioCtx.createGain();
-        metallicGain.gain.value = 0.0;
+        magneticGain = audioCtx.createGain();
+        magneticGain.gain.value = 0.0;
 
-        metallicFilter.connect(metallicGain);
-        metallicGain.connect(masterGain);
+        magneticFilter.connect(magneticGain);
+        magneticGain.connect(masterGain);
     }
 
     if (!engineBuffer) {
@@ -374,23 +373,31 @@ function updateEngineAudio(speed) {
         lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.1);
     }
 
-    let metallicVolume = 0.0;
-    let metallicFreq = 2400;
+    // 80 KM/S SONRASI MANYETİK YAYILMA VE DERİNLİK EFEKTİ
+    let magneticVolume = 0.0;
+    let magneticFreq = 2200;
+    let magneticQ = 4.0;
 
     if (speed > 80) {
         let overSpeed = speed - 80;
-        metallicVolume = Math.min(0.85, overSpeed / 60); 
-        metallicFreq = 2400 + (overSpeed * 45); 
+        // Hızlandıkça manyetik hacim katlanarak artar ve etrafa yayılarak yankılanır
+        magneticVolume = Math.min(0.9, overSpeed / 50); 
+        magneticFreq = 2200 + (overSpeed * 55); 
+        magneticQ = Math.max(1.5, 4.0 - (overSpeed * 0.03)); // Q düşer, ses havada yayılır ve genişler
     }
 
-    if(metallicGain && metallicFilter) {
-        metallicGain.gain.cancelScheduledValues(now);
-        metallicGain.gain.setValueAtTime(metallicGain.gain.value, now);
-        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.1);
+    if(magneticGain && magneticFilter) {
+        magneticGain.gain.cancelScheduledValues(now);
+        magneticGain.gain.setValueAtTime(magneticGain.gain.value, now);
+        magneticGain.gain.linearRampToValueAtTime(magneticVolume, now + 0.1);
 
-        metallicFilter.frequency.cancelScheduledValues(now);
-        metallicFilter.frequency.setValueAtTime(metallicFilter.frequency.value, now);
-        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.1);
+        magneticFilter.frequency.cancelScheduledValues(now);
+        magneticFilter.frequency.setValueAtTime(magneticFilter.frequency.value, now);
+        magneticFilter.frequency.linearRampToValueAtTime(magneticFreq, now + 0.1);
+
+        magneticFilter.Q.cancelScheduledValues(now);
+        magneticFilter.Q.setValueAtTime(magneticFilter.Q.value, now);
+        magneticFilter.Q.linearRampToValueAtTime(magneticQ, now + 0.1);
     }
 
     if(masterGain && isEngineRunning) {
@@ -426,7 +433,7 @@ function startSolidEngine() {
     activeSource.loop = true;
 
     activeSource.connect(lowpassFilter);
-    activeSource.connect(metallicFilter);
+    activeSource.connect(magneticFilter); // Manyetik filtre zincire bağlandı
 
     activeSource.start(now);
 
@@ -535,8 +542,8 @@ function runSimulationLoop() {
 
         let statusMode = "RÖLANTİ (SESSİZ)";
         if (speed >= 1 && speed < 80) statusMode = "WARP SÜRÜŞ";
-        else if (speed >= 80 && speed < 140) statusMode = "HYPER-DRIVE";
-        else if (speed >= 140) statusMode = "LIGHTSPEED";
+        else if (speed >= 80 && speed < 140) statusMode = "MANYETİK AKI";
+        else if (speed >= 140) statusMode = "HYPER-DRIVE";
 
         document.getElementById("status").innerText = `${statusMode} (${speed} KM/H)`;
     }
