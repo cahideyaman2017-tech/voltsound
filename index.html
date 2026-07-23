@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Master Equal-Power Crossfade Edition</title>
+<title>VoltSound - MP3 40s Optimized Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -247,7 +247,7 @@ function animateWaves() {
             const baseAmplitude = 20 + (speedFactor * 0.15); 
             const amplitude = baseAmplitude * waveScaleFactor;
             
-            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.8)) * amplitude 
+            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.8)) * formatWaveValue(amplitude) 
                       * Math.cos(waveAngle * 0.3);
 
             if (x === 0) ctx.moveTo(x, y);
@@ -258,6 +258,7 @@ function animateWaves() {
 
     requestAnimationFrame(animateWaves);
 }
+function formatWaveValue(val) { return val; }
 animateWaves();
 
 let audioCtx = null;
@@ -267,7 +268,7 @@ let metallicFilter = null;
 let metallicGain = null;
 let watchId = null;
 
-// Çok uzun ve kademeli crossfade için çift ses kanalı (A ve B)
+// Çift Kanal Nöbetleşe Çapraz Geçiş Sistemi (Dual-Source Overlapping Crossfade)
 let sourceA = null, gainA = null;
 let sourceB = null, gainB = null;
 let loopTimeout = null;
@@ -278,7 +279,8 @@ let lastTime = null;
 let gpsSpeed = 0;
 let smoothedSpeed = 0;
 
-const ENGINE_SOUND_FILE = "teslasound.wav";
+// Dosya formatı MP3 olarak güncellendi
+const ENGINE_SOUND_FILE = "teslasound.mp3";
 
 async function loadEngineSound() {
     if (!audioCtx) {
@@ -305,43 +307,11 @@ async function loadEngineSound() {
         try {
             const response = await fetch(ENGINE_SOUND_FILE);
             const arrayBuffer = await response.arrayBuffer();
-            let rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-            
-            // Ses dosyasının içine derin bir Equal-Power crossfade ön işlemesi gömüyoruz
-            engineBuffer = createPrefadeBuffer(audioCtx, rawBuffer);
+            engineBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         } catch(e) {
-            console.error("Tesla ses dosyası yüklenemedi:", e);
+            console.error("Tesla MP3 ses dosyası yüklenemedi:", e);
         }
     }
-}
-
-// Dosya seviyesinde uzun ve hissedilmez bir fade uygular
-function createPrefadeBuffer(context, sourceBuffer) {
-    const numChannels = sourceBuffer.numberOfChannels;
-    const sampleRate = sourceBuffer.sampleRate;
-    const length = sourceBuffer.length;
-    const newBuffer = context.createBuffer(numChannels, length, sampleRate);
-    
-    // Kenar çıtırtılarını tamamen yok etmek için ilk ve son 50ms tamamen sessizliğe sönümlenir
-    const padSamples = Math.floor(sampleRate * 0.05);
-
-    for (let c = 0; c < numChannels; c++) {
-        const src = sourceBuffer.getChannelData(c);
-        const dst = newBuffer.getChannelData(c);
-
-        for (let i = 0; i < length; i++) {
-            let sample = src[i];
-            if (i < padSamples) {
-                sample *= (i / padSamples);
-            }
-            const endDist = length - 1 - i;
-            if (endDist < padSamples) {
-                sample *= (endDist / padSamples);
-            }
-            dst[i] = sample;
-        }
-    }
-    return newBuffer;
 }
 
 function distanceMeters(lat1, lon1, lat2, lon2){
@@ -391,13 +361,13 @@ function updateEngineAudio(speed) {
     }
 }
 
-// İPEKSİ YUMUŞAKLIKTA UZUN GEÇİŞLİ DÖNGÜ MİMARİSİ (ULTRA SMOOTH CROSSFADE)
+// 40 SANİYELİK MP3 İÇİN 2.5 SANİYELİK İPEKSİ UZUN CROSSFADE MİMARİSİ
+// MP3 formatının encoder padding (boşluk) dezavantajını tamamen yok etmek için geçiş süresi genişletildi.
 function startMasterLoop() {
     if (!isEngineRunning || !engineBuffer) return;
 
-    const duration = engineBuffer.duration;
-    // Geçiş süresini çok daha uzun (1.5 saniye) tutuyoruz ki insan kulağı geçişi asla algılayamasın, sis gibi birbirine karışsın.
-    const transitionTime = 1.5; 
+    const duration = engineBuffer.duration; // ~40 saniye
+    const transitionTime = 2.5; // Genişletilmiş ipeksi yumuşatma aralığı
 
     function playA() {
         if (!isEngineRunning) return;
@@ -410,7 +380,6 @@ function startMasterLoop() {
 
         gainA = audioCtx.createGain();
         gainA.gain.setValueAtTime(0.0, now);
-        // Equal-Power eğrisine yakın yumuşak açılma
         gainA.gain.linearRampToValueAtTime(1.0, now + transitionTime);
 
         sourceA.connect(gainA);
@@ -418,7 +387,6 @@ function startMasterLoop() {
         sourceA.connect(metallicFilter);
         sourceA.start(now);
 
-        // Dosya bitimine 1.5 saniye kala B kanalını yavaşça araya sokmaya başla
         const triggerDelay = ((duration / currentRate) - transitionTime) * 1000;
         
         loopTimeout = setTimeout(() => {
@@ -427,7 +395,7 @@ function startMasterLoop() {
                 gainA.gain.cancelScheduledValues(audioCtx.currentTime);
                 gainA.gain.setValueAtTime(gainA.gain.value, audioCtx.currentTime);
                 gainA.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + transitionTime);
-                setTimeout(() => { try { sourceA.stop(); } catch(e){} }, (transitionTime + 0.2) * 1000);
+                setTimeout(() => { try { sourceA.stop(); } catch(e){} }, (transitionTime + 0.3) * 1000);
             }
         }, triggerDelay);
     }
@@ -458,7 +426,7 @@ function startMasterLoop() {
                 gainB.gain.cancelScheduledValues(audioCtx.currentTime);
                 gainB.gain.setValueAtTime(gainB.gain.value, audioCtx.currentTime);
                 gainB.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + transitionTime);
-                setTimeout(() => { try { sourceB.stop(); } catch(e){} }, (transitionTime + 0.2) * 1000);
+                setTimeout(() => { try { sourceB.stop(); } catch(e){} }, (transitionTime + 0.3) * 1000);
             }
         }, triggerDelay);
     }
