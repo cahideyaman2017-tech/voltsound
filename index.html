@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Master Performance Edition</title>
+<title>VoltSound - Stable Flow Edition</title>
 
 <!-- Google Fonts: Fütüristik / Sci-Fi Tarzı Font (Orbitron) -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
@@ -314,18 +314,15 @@ async function loadEngineSound() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Master Gain (Tüm ses çıkışını tek elden pürüzsüz yöneten düğüm)
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.0;
         masterGain.connect(audioCtx.destination);
 
-        // 1. Ana Tok Filtre (0-80 km/h arası)
         lowpassFilter = audioCtx.createBiquadFilter();
         lowpassFilter.type = "lowpass";
         lowpassFilter.frequency.value = 600;
         lowpassFilter.connect(masterGain);
 
-        // 2. Metalik Rezonans Filtresi (80 km/h sonrası jet çınlaması)
         metallicFilter = audioCtx.createBiquadFilter();
         metallicFilter.type = "bandpass";
         metallicFilter.frequency.value = 2400;
@@ -343,14 +340,13 @@ async function loadEngineSound() {
             const response = await fetch(ENGINE_SOUND_FILE);
             const arrayBuffer = await response.arrayBuffer();
             let rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-            engineBuffer = applyFadeToBuffer(audioCtx, rawBuffer, 0.04); // Çıtırtı önleyici mini fade
+            engineBuffer = applyFadeToBuffer(audioCtx, rawBuffer, 0.04);
         } catch(e) {
             console.error("Tesla ses dosyası yüklenemedi:", e);
         }
     }
 }
 
-// Ses tamponunun başını ve sonunu mikro düzeyde yumuşatan fonksiyon
 function applyFadeToBuffer(context, audioBuffer, fadeDuration) {
     const numChannels = audioBuffer.numberOfChannels;
     const sampleRate = audioBuffer.sampleRate;
@@ -378,29 +374,29 @@ function distanceMeters(lat1, lon1, lat2, lon2){
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// KARARLI PITCH, FİLTRE VE SES KONTROLÜ (Kopma/Kesilme Sıfırlandı)
-function updateEngineAudio(speed, throttle) {
+// KESİNTİSİZ VE AKICI SES YÖNETİMİ (ASLA SIFIRLANIP KOPMAZ)
+function updateEngineAudio(speed) {
     if (!audioCtx || !activeSource) return;
     const now = audioCtx.currentTime;
 
-    // Pitch (Perde) hesaplaması
+    // Pitch (Perde)
     let rate = 0.75 + (speed / 140);
     rate = Math.max(0.75, Math.min(1.85, rate));
 
     try {
         activeSource.playbackRate.setValueAtTime(activeSource.playbackRate.value, now);
-        activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.08);
+        activeSource.playbackRate.linearRampToValueAtTime(rate, now + 0.05);
     } catch(e){}
 
-    // Tok alt filtre frekansı
+    // Tok Filtre Frekansı
     let targetFreq = 500 + (speed * 30);
     targetFreq = Math.max(500, Math.min(5000, targetFreq));
     if(lowpassFilter) {
         lowpassFilter.frequency.setValueAtTime(lowpassFilter.frequency.value, now);
-        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.08);
+        lowpassFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.05);
     }
 
-    // 80 KM/H Sonrası Metalik Çınlama
+    // Metalik Çınlama (80 km/h sonrası)
     let metallicVolume = 0.0;
     let metallicFreq = 2400;
 
@@ -412,28 +408,26 @@ function updateEngineAudio(speed, throttle) {
 
     if(metallicGain && metallicFilter) {
         metallicGain.gain.setValueAtTime(metallicGain.gain.value, now);
-        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.08);
+        metallicGain.gain.linearRampToValueAtTime(metallicVolume, now + 0.05);
 
         metallicFilter.frequency.setValueAtTime(metallicFilter.frequency.value, now);
-        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.08);
+        metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.05);
     }
 
-    // Master Volume (Gaz kesildiğinde bıçak gibi kesilmez, pürüzsüzce fade out olur)
-    let targetVolume = (isEngineRunning && (speed > 1 || throttle > 0.01)) ? 1.0 : 0.0;
-    if(masterGain) {
+    // Master Volume: Motor çalıştığı sürece ses ASLA tamamen kapanmaz; rölantide hep akmaya devam eder.
+    if(masterGain && isEngineRunning) {
         masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-        masterGain.gain.linearRampToValueAtTime(targetVolume, now + 0.12);
+        masterGain.gain.linearRampToValueAtTime(1.0, now + 0.08);
     }
 }
 
-// TEK VE ASLA KOPMAYAN NATIVE LOOP BAŞLATICI
 function startEngineSource() {
     if(!engineBuffer || activeSource) return;
     const now = audioCtx.currentTime;
 
     const source = audioCtx.createBufferSource();
     source.buffer = engineBuffer;
-    source.loop = true; // Tarayıcının kendi donanımsal sonsuz döngüsü
+    source.loop = true; // Donanımsal sonsuz döngü
 
     source.connect(lowpassFilter);
     source.connect(metallicFilter);
@@ -526,7 +520,7 @@ document.getElementById("actionBtn").onclick = async () => {
 function runSimulationLoop() {
     if(isEngineRunning) {
         if(!isDraggingThrottle && throttleValue > 0) {
-            throttleValue -= 0.06; // Bırakınca akıcı ve hızlı sönümlenme
+            throttleValue -= 0.05; // Bırakınca akıcı sönümlenme
             if(throttleValue < 0) throttleValue = 0;
             updateThrottlePosition();
         }
@@ -539,17 +533,17 @@ function runSimulationLoop() {
         }
 
         if (targetSpeed < smoothedSpeed) {
-            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.45; 
+            smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.4; 
         } else {
             smoothedSpeed += (targetSpeed - smoothedSpeed) * 0.25; 
         }
 
-        if(targetSpeed < 2 && throttleValue === 0) smoothedSpeed = 0;
+        if(targetSpeed < 1 && throttleValue === 0) smoothedSpeed = 0;
 
         const speed = Math.max(0, Math.round(smoothedSpeed));
         currentSpeedForVisual = speed;
 
-        updateEngineAudio(speed, throttleValue);
+        updateEngineAudio(speed);
 
         let statusMode = "RÖLANTİ";
         if (speed >= 30 && speed < 80) statusMode = "SÜRÜŞ";
