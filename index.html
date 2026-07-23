@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoltSound - Smooth Decay Edition</title>
+<title>VoltSound - Warp Speed Starfield Edition</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
 
@@ -38,16 +38,10 @@ canvas {
     transform: translateX(-50%);
     width: 120vw;
     height: 300px;
-    background: radial-gradient(ellipse at bottom, rgba(56, 189, 248, 0.25) 0%, rgba(14, 165, 233, 0.08) 40%, transparent 70%);
+    background: radial-gradient(ellipse at bottom, rgba(56, 189, 248, 0.2) 0%, rgba(14, 165, 233, 0.05) 40%, transparent 70%);
     filter: blur(50px);
     pointer-events: none;
     z-index: 1;
-    animation: auroraPulse 6s ease-in-out infinite alternate;
-}
-
-@keyframes auroraPulse {
-    0% { opacity: 0.5; transform: translateX(-50%) scale(0.95); }
-    100% { opacity: 0.9; transform: translateX(-50%) scale(1.05); }
 }
 
 .container{
@@ -187,7 +181,7 @@ button.stop-btn:hover {
 </head>
 <body>
 
-<canvas id="waveCanvas"></canvas>
+<canvas id="starCanvas"></canvas>
 <div class="aurora-glow"></div>
 
 <div id="throttleLabel" class="throttle-label">GAZ</div>
@@ -210,15 +204,8 @@ button.stop-btn:hover {
 </div>
 
 <script>
-const canvas = document.getElementById("waveCanvas");
+const canvas = document.getElementById("starCanvas");
 const ctx = canvas.getContext("2d");
-
-let currentSpeedForVisual = 0;
-let waveAngle = 0;
-let isEngineRunning = false;
-let waveScaleFactor = 0.0;
-let throttleValue = 0.0; 
-let isDraggingThrottle = false;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -227,38 +214,80 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-function animateWaves() {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+// Warp Yıldız Sistemi Mimarisi
+const numStars = 400;
+const stars = [];
+
+for (let i = 0; i < numStars; i++) {
+    stars.push({
+        x: (Math.random() - 0.5) * canvas.width * 2,
+        y: (Math.random() - 0.5) * canvas.height * 2,
+        z: Math.random() * canvas.width,
+        size: Math.random() * 1.5 + 0.5
+    });
+}
+
+let currentSpeedForVisual = 0;
+let isEngineRunning = false;
+let throttleValue = 0.0; 
+let isDraggingThrottle = false;
+
+function animateWarpStars() {
+    // Hafif iz bırakma (motion blur) hissi için opak siyah dolgu
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    const cx = canvas.width / 2;
     const cy = canvas.height / 2;
-    const speedFactor = isEngineRunning ? currentSpeedForVisual : 0;
     
-    waveAngle += 0.025 + (speedFactor / 250);
-    ctx.lineWidth = 1.5;
+    // Hız arttıkça yıldızların akış hızı (warp factor) katlanarak artar
+    const baseSpeed = 2.0;
+    const speedMultiplier = baseSpeed + (currentSpeedForVisual * 0.35);
 
-    for (let w = 0; w < 3; w++) {
-        ctx.beginPath();
-        const alpha = 0.06 + ((0.18 + (w * 0.1)) * waveScaleFactor);
-        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+    for (let i = 0; i < numStars; i++) {
+        let star = stars[i];
         
-        for (let x = 0; x < canvas.width; x += 10) {
-            const frequency = 0.004;
-            const baseAmplitude = 20 + (speedFactor * 0.15); 
-            const amplitude = baseAmplitude * waveScaleFactor;
-            
-            const y = cy + Math.sin(x * frequency + waveAngle + (w * 0.8)) * amplitude 
-                      * Math.cos(waveAngle * 0.3);
+        star.z -= speedMultiplier;
 
-            if (x === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+        // Yıldız ekranın arkasında kalırsa tekrar derinliğe gönder
+        if (star.z <= 0) {
+            star.z = canvas.width;
+            star.x = (Math.random() - 0.5) * canvas.width * 2;
+            star.y = (Math.random() - 0.5) * canvas.height * 2;
         }
-        ctx.stroke();
+
+        // 3D Perspektif projeksiyonu
+        const k = 250 / star.z;
+        const px = star.x * k + cx;
+        const py = star.y * k + cy;
+
+        if (px >= 0 && px <= canvas.width && py >= 0 && py <= canvas.height) {
+            const pSize = Math.max(1, star.size * k * (1 + currentSpeedForVisual * 0.02));
+            
+            // Hız yüksekken yıldızlar çizgiye (warp streak) dönüşür
+            if (currentSpeedForVisual > 15) {
+                const prevK = 250 / (star.z + speedMultiplier * 1.5);
+                const prevPx = star.x * prevK + cx;
+                const prevPy = star.y * prevK + cy;
+
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(prevPx, prevPy);
+                ctx.strokeStyle = `rgba(56, 189, 248, ${Math.min(1, k)})`;
+                ctx.lineWidth = pSize;
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, k)})`;
+                ctx.beginPath();
+                ctx.arc(px, py, pSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
     }
 
-    requestAnimationFrame(animateWaves);
+    requestAnimationFrame(animateWarpStars);
 }
-animateWaves();
+animateWarpStars();
 
 let audioCtx = null;
 let engineBuffer = null; 
@@ -362,13 +391,11 @@ function updateEngineAudio(speed) {
         metallicFilter.frequency.linearRampToValueAtTime(metallicFreq, now + 0.1);
     }
 
-    // YAVAŞLARKEN / GAZI ÇEKİNCE SÖNÜMLENEREK KAPANMA (DECAY / FADE-OUT)
     if(masterGain && isEngineRunning) {
         let targetMasterGain = speed > 1 ? Math.min(0.8, 0.15 + (speed / 180)) : 0.0;
         
         masterGain.gain.cancelScheduledValues(now);
         masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-        // Hız düştüğünde sesin aniden değil, 0.4 saniyelik kademeli bir kavisle sönümlenmesini sağlar
         masterGain.gain.setTargetAtTime(targetMasterGain, now, 0.15);
     }
 }
@@ -455,15 +482,6 @@ document.getElementById("actionBtn").onclick = async () => {
     isEngineRunning = true;
     startSolidEngine();
     
-    waveScaleFactor = 0.0;
-    const growInterval = setInterval(() => {
-        waveScaleFactor += 0.05;
-        if (waveScaleFactor >= 1.0) {
-            waveScaleFactor = 1.0;
-            clearInterval(growInterval);
-        }
-    }, 25);
-
     watchId = navigator.geolocation.watchPosition(
         pos => {
             const lat = pos.coords.latitude;
@@ -514,9 +532,9 @@ function runSimulationLoop() {
         updateEngineAudio(speed);
 
         let statusMode = "RÖLANTİ (SESSİZ)";
-        if (speed >= 1 && speed < 80) statusMode = "SÜRÜŞ";
-        else if (speed >= 80 && speed < 140) statusMode = "SPORT+METAL";
-        else if (speed >= 140) statusMode = "BOOST";
+        if (speed >= 1 && speed < 80) statusMode = "WARP SÜRÜŞ";
+        else if (speed >= 80 && speed < 140) statusMode = "HYPER-DRIVE";
+        else if (speed >= 140) statusMode = "LIGHTSPEED";
 
         document.getElementById("status").innerText = `${statusMode} (${speed} KM/H)`;
     }
@@ -546,14 +564,6 @@ document.getElementById("stopBtn").onclick = () => {
     document.getElementById("metricPanel").classList.remove("zoom-in");
     document.getElementById("startPanel").classList.remove("zoom-out");
     document.getElementById("actionBtn").innerText = "BAŞLAT";
-
-    const decayInterval = setInterval(() => {
-        waveScaleFactor -= 0.05;
-        if (waveScaleFactor <= 0) {
-            waveScaleFactor = 0;
-            clearInterval(decayInterval);
-        }
-    }, 20);
 
     setTimeout(() => {
         if(activeSource) {
